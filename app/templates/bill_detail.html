@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bill_fields %}
+{% block title %}{{ bill.name }} · Payday{% endblock %}
+{% block content %}
+<p class="small"><a href="/bills">All bills</a></p>
+<div class="pagehead">
+  <div>
+    <h1>{{ bill.name }}{% if not bill.active %} <span class="chip">paused</span>{% endif %}</h1>
+    <p class="sub">{{ bill.amount|money }} {{ bill.frequency }}{% if upcoming %}. Next due {{ upcoming[0]|nice }}{% endif %}</p>
+  </div>
+  <a class="btn quiet admin-only" href="#edit">Edit bill</a>
+</div>
+{% if bill_msg == 'bad' %}<p class="flash bad" role="alert">Those changes couldn’t be saved. A bill needs a name, an amount above zero and some statement text.</p>{% endif %}
+
+<div class="kpis">
+  <div class="kpi"><b>{{ linked|length }}</b><span>Payment{{ 's' if linked|length != 1 }} linked</span></div>
+  {% if linked %}
+  <div class="kpi"><b>{{ avg|money }}</b><span>Average paid</span></div>
+  <div class="kpi"><b>{{ (-linked[0].amount)|money }}</b><span>Last paid, {{ linked[0].date|nice }}</span></div>
+  {% endif %}
+  {% if upcoming %}<div class="kpi"><b>{{ upcoming[0]|short }}</b><span>Next due</span></div>{% endif %}
+</div>
+
+{% if missed %}
+<p class="flash bad" style="margin-top:1rem">No payment linked for {% for d in missed %}{{ d|nice }}{{ ', ' if not loop.last }}{% endfor %}.
+  <span class="admin-only">Open the payment on the <a href="/transactions?search={{ bill.match_pattern|urlencode if not bill.match_pattern.startswith('re:') else '' }}">Transactions page</a> and choose this bill from its menu, or adjust the matching below.</span></p>
+{% endif %}
+
+<section class="section">
+  <h2>Payments</h2>
+  <div class="panel flush" style="margin-top:.75rem">
+  <table class="stack">
+    <thead><tr><th>Description</th><th>Paid</th><th>For bill due</th><th>Account</th><th class="num">Amount</th><th class="admin-only"></th></tr></thead>
+    <tbody>
+    {% for d, p in pending|reverse %}
+    <tr><td class="lead">{{ p.description }} <span class="chip pend">Pending</span></td>
+        <td class="nowrap">{{ p.date|nice }}</td>
+        <td class="nowrap">{{ d|nice }}</td>
+        <td>{{ accounts[p.account_id].name if p.account_id in accounts else '' }}</td>
+        <td class="num key">{{ (-p.amount)|money }}</td>
+        <td class="admin-only bare"><span class="muted small">Links when it settles</span></td></tr>
+    {% endfor %}
+    {% for t in linked %}
+    <tr><td class="lead">{{ t.merchant or t.description }}{% if t.category_source == 'manual' %} <span class="chip">linked by you</span>{% endif %}</td>
+        <td class="nowrap" data-sort="{{ t.date.isoformat() }}">{{ t.date|nice }}</td>
+        <td class="nowrap" data-sort="{{ t.bill_due_date.isoformat() if t.bill_due_date else '' }}">{{ t.bill_due_date|nice if t.bill_due_date else '' }}</td>
+        <td data-label="From">{{ accounts[t.account_id].name if t.account_id in accounts else '' }}</td>
+        <td class="num key" data-sort="{{ -t.amount }}">{{ (-t.amount)|money }}</td>
+        <td class="admin-only bare"><form method="post" action="/transactions/{{ t.id }}/bill">
+              <input type="hidden" name="bill_id" value=""><input type="hidden" name="next" value="/bills/{{ bill.id }}">
+              <button class="quiet small">Not this bill</button></form></td></tr>
+    {% else %}{% if not pending %}
+    <tr><td colspan="6" class="empty">No payments linked yet. They’re linked when you sync, or choose this bill from a payment’s menu on the Transactions page.</td></tr>{% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="section admin-only narrow" id="edit">
+  <h2>Edit bill</h2>
+  {% set p = {'name': bill.name, 'amount': '%.2f'|format(bill.amount), 'frequency': bill.frequency, 'anchor_date': bill.anchor_date.isoformat(),
+              'match_pattern': bill.match_pattern, 'tolerance_pct': bill.tolerance_pct|round|int, 'window_days': bill.window_days, 'category_id': bill.category_id} %}
+  <form method="post" action="/bills/{{ bill.id }}" class="panel" style="margin-top:.75rem">
+    <div class="fields">{{ bill_fields(p, cats, today) }}</div>
+    <label class="check" style="margin-top:.75rem"><input type="checkbox" name="active" value="true" {% if bill.active %}checked{% endif %}> Active. Untick to pause this bill without losing its history.</label>
+    <div class="actions" style="margin-top:.75rem"><button>Save changes</button></div>
+  </form>
+  <form method="post" action="/bills/{{ bill.id }}/delete" data-confirm="Delete the {{ bill.name }} bill? Its payments will be unlinked." style="margin-top:1.5rem">
+    <button class="danger small">Delete this bill</button>
+  </form>
+</section>
+{% endblock %}

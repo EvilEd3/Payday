@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}{{ m.loan.name }} · Payday{% endblock %}
+{% block content %}
+{% set loan = m.loan %}
+{% set nx = m.next %}
+<div class="pagehead">
+  <div>
+    <h1>{{ loan.name }}</h1>
+    <p class="sub">{% if m.account %}<a href="/accounts/{{ m.account.id }}">{{ m.account.name }}</a>, {% endif %}{{ '%.2f'|format(m.rate_now) }}% p.a.{% if m.fixed_until %}, fixed until {{ m.fixed_until|dmy }}{% endif %}. Repaid on the {{ loan.payment_day }}{{ 'st' if loan.payment_day in (1,21,31) else 'nd' if loan.payment_day in (2,22) else 'rd' if loan.payment_day in (3,23) else 'th' }} of each month.</p>
+  </div>
+  <a class="btn quiet small admin-only" href="/mortgage/setup">Mortgage setup</a>
+</div>
+
+{% if m.fixed_until and loan.rate_after is none and m.refix_days is not none %}
+<a class="notice admin-only" href="/mortgage/setup#refix" style="text-decoration:none"><span><strong>Your fixed rate ends in {{ m.refix_days }} days.</strong> The forecast assumes {{ '%.2f'|format(m.rate_now) }}% after that. Enter the rate you expect for a truer picture, or try one below.</span><span class="btn quiet small">Set it</span></a>
+{% endif %}
+
+<section class="mhero panel">
+  <div class="mh-main">
+    <span class="mh-label">Owed today</span>
+    <b class="mh-big">{{ m.owed|money }}</b>
+    <span class="muted small">{% if m.bank_owed is not none %}From {{ m.account.institution or 'the bank' }} at the last sync{% else %}Worked out from your repayments{% endif %}</span>
+    <div class="mh-progress" role="img" aria-label="{{ (repaid_pct * 100)|round(1) }}% of the loan repaid">
+      <span style="width: {{ (repaid_pct * 100)|round(2) }}%"></span>
+    </div>
+    <span class="small"><strong>{{ (repaid_pct * 100)|round(2) }}%</strong> of {{ first|dollars }} repaid</span>
+  </div>
+  <div class="mh-free">
+    <span class="mh-label">Mortgage-free</span>
+    <b>{{ m.base.payoff|my }}</b>
+    <span class="muted small">{% if left_months is not none %}{{ left_months|yrsmths }} to go, if you keep paying {{ m.payment|money }}{% else %}Repayments don’t cover the interest{% endif %}</span>
+  </div>
+</section>
+
+<div class="kpis" style="margin-top:.6rem">
+  <div class="kpi"><b>{{ m.equity|dollars }}</b><span>Equity, {{ (m.equity_pct * 100)|round(1) }}% of {{ m.value|dollars }}</span></div>
+  <div class="kpi"><b class="{{ 'due' if m.lvr > 0.8 }}">{{ (m.lvr * 100)|round(1) }}%</b><span>Loan to value{% if m.lvr > 0.8 %}. Banks look for 80% or less{% endif %}</span></div>
+  {% if nx %}<div class="kpi"><b>{{ nx.payment|money }}</b><span>Next repayment, {{ nx.date|nice }}: {{ nx.interest|dollars }} interest, {{ nx.principal|dollars }} off the loan</span></div>{% endif %}
+  <div class="kpi"><b>{{ m.per_day|money }}</b><span>Interest a day at {{ '%.2f'|format(m.rate_now) }}%</span></div>
+  <div class="kpi"><b>{{ m.paid.payments|dollars }}</b><span>Repaid so far: {{ m.paid.interest|dollars }} interest, {{ m.paid.principal|dollars }} principal</span></div>
+  <div class="kpi"><b>{{ m.base.interest|dollars }}</b><span>Interest still to pay over the rest of the loan</span></div>
+  {% if m.refix_days is not none %}<div class="kpi"><b>{{ m.refix_days }} days</b><span>Until the fixed rate ends{% if m.base.payment_after_refix %}. Then about {{ m.base.payment_after_refix|money }} a month{% endif %}</span></div>{% endif %}
+  {% if pay_account and nx %}{% set cover = pay_account.balance_available if pay_account.balance_available is not none else pay_account.balance_current %}
+  <a class="kpi" href="/accounts/{{ pay_account.id }}"><b class="{{ 'pos' if cover >= nx.payment else 'neg' }}">{{ cover|money }}</b><span>In {{ pay_account.name }}. {% if cover >= nx.payment %}Enough for the next repayment{% else %}{{ (nx.payment - cover)|money }} short of the next repayment{% endif %}</span></a>{% endif %}
+</div>
+
+<section class="section">
+  <h2>Balance over time</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <ul class="keys">
+      <li><i class="k-actual"></i>Owed so far</li><li><i class="k-forecast"></i>Forecast</li>
+      {% if m.alt %}<li><i class="k-what"></i>With your what-if</li>{% endif %}
+    </ul>
+    {{ balance_chart }}
+  </div>
+</section>
+
+<section class="section" id="whatif">
+  <h2>What if…</h2>
+  <div class="panel whatif" style="margin-top:.75rem">
+    <form method="get" action="/mortgage#whatif" class="wi-form">
+      <label>Extra each month <input name="extra" inputmode="decimal" value="{{ form.extra }}" placeholder="$200"></label>
+      <label>One-off lump sum <input name="lump" inputmode="decimal" value="{{ form.lump }}" placeholder="$10,000"></label>
+      <label>Paid on <input type="date" name="lump_date" value="{{ form.lump_date }}" min="{{ today.isoformat() }}"></label>
+      <label>Rate after {{ m.fixed_until|my if m.fixed_until else 'refixing' }} <input name="refix" inputmode="decimal" value="{{ form.refix }}" placeholder="{{ '%.2f'|format(loan.rate_after if loan.rate_after is not none else m.rate_now) }}%"></label>
+      <div class="wi-go"><button>Work it out</button>{% if m.alt %}<a class="small" href="/mortgage#whatif">Clear</a>{% endif %}</div>
+    </form>
+    {% if compare %}
+    <div class="wi-result">
+      <div><b class="{{ 'pos' if (compare.sooner or 0) > 0 else 'neg' if (compare.sooner or 0) < 0 }}">{% if compare.sooner %}{{ compare.sooner|abs|yrsmths }} {{ 'sooner' if compare.sooner > 0 else 'later' }}{% else %}Same month{% endif %}</b><span>Mortgage-free {{ m.alt.payoff|my }} instead of {{ m.base.payoff|my }}</span></div>
+      <div><b class="{{ 'pos' if compare.saved > 0 else 'neg' }}">{{ compare.saved|abs|dollars }}</b><span>Interest {{ 'saved' if compare.saved >= 0 else 'added' }}</span></div>
+      {% if compare.extra_paid %}<div><b>{{ compare.extra_paid|dollars }}</b><span>Extra you’d pay in, so each extra dollar saves ${{ '%.2f'|format(compare.saved / compare.extra_paid) }} in interest</span></div>{% endif %}
+      {% if m.alt.payment_after_refix %}<div><b>{{ m.alt.payment_after_refix|money }}</b><span>Repayment after refixing{% if m.base.payment_after_refix %}, {{ (m.alt.payment_after_refix - m.base.payment_after_refix)|money(True) }} a month{% endif %}</span></div>{% endif %}
+    </div>
+    {% else %}
+    {% endif %}
+  </div>
+</section>
+
+<div class="twocol">
+<section class="section">
+  <h2>Interest and principal each year</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <ul class="keys"><li><i class="k-int"></i>Interest</li><li><i class="k-prin"></i>Principal</li><li class="muted">Lighter: still to come</li></ul>
+    {{ split_chart }}
+  </div>
+</section>
+<section class="section">
+  <h2>What the loan costs in all</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <div class="pie">{{ cost.svg }}
+      <ul class="legend">{% for label, value, frac, colour, href in cost.legend %}
+        <li><i style="background: {{ colour }}"></i><span>{{ label }}</span><span class="muted small">{{ (frac * 100)|round|int }}%</span><span class="num">{{ value|dollars }}</span></li>
+      {% endfor %}
+        <li class="total"><i></i><span>Total</span><span></span><span class="num">{{ (first + m.paid.interest + m.base.interest)|dollars }}</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+</div>
+
+<section class="section">
+  <h2>Property value and equity</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <ul class="keys"><li><i class="k-value"></i>Property value</li><li><i class="k-actual"></i>Owed</li><li class="muted">The gap between them is your equity</li></ul>
+    {{ equity_chart }}
+    <form class="admin-only inline-add" method="post" action="/mortgage/values">
+      <input type="hidden" name="next" value="/mortgage">
+      <label>Valued on <input type="date" name="when" value="{{ today.isoformat() }}" required></label>
+      <label>Value <input name="value" inputmode="decimal" placeholder="{{ m.value|round|int }}" required></label>
+      <label>Source <input name="note" placeholder="RV, bank valuation, appraisal"></label>
+      <button class="quiet">Add valuation</button>
+    </form>
+  </div>
+</section>
+
+<div class="twocol">
+<section class="section">
+  <h2>Milestones</h2>
+  <ol class="milestones panel" style="margin-top:.75rem">
+    {% for ms in m.milestones %}
+    <li class="{{ 'done' if ms.done }}"><i aria-hidden="true"></i><div><strong>{{ ms.label }}</strong>{% if ms.about %}<span class="muted small"> {{ ms.about }}</span>{% endif %}</div><span class="when">{{ 'Reached ' if ms.done }}{{ ms.date|my }}</span></li>
+    {% else %}<li class="muted">Add your loan details to see milestones.</li>{% endfor %}
+  </ol>
+</section>
+<section class="section">
+  <h2>Interest rates</h2>
+  <div class="panel flush" style="margin-top:.75rem">
+  <table class="nosearch nosort">
+    <thead><tr><th>From</th><th class="num">Rate p.a.</th><th></th></tr></thead>
+    <tbody>
+    {% for d, r in m.rates|reverse %}<tr><td>{{ d|dmy }}</td><td class="num">{{ '%.2f'|format(r) }}%</td><td class="muted small">{{ 'Now' if loop.first }}</td></tr>{% endfor %}
+    {% if m.fixed_until and m.fixed_until > today %}<tr class="muted"><td>{{ m.fixed_until|dmy }}</td><td class="num">{{ ('%.2f'|format(loan.rate_after) ~ '%') if loan.rate_after is not none else '?' }}</td><td class="small">Fixed term ends</td></tr>{% endif %}
+    </tbody>
+  </table>
+  </div>
+</section>
+</div>
+
+<section class="section">
+  <h2>Next 12 repayments</h2>
+  <div class="panel flush" style="margin-top:.75rem">
+  <table class="nosearch mtable">
+    <thead><tr><th>Date</th><th class="num opt">Repayment</th><th class="num">Interest</th><th class="num">Principal</th><th class="num">Owed after</th></tr></thead>
+    <tbody>
+    {% for r in upcoming %}<tr><td class="nowrap" data-sort="{{ r.date.isoformat() }}">{{ r.date|dmy }}</td><td class="num opt">{{ r.payment|money }}</td><td class="num">{{ r.interest|money }}</td><td class="num">{{ r.principal|money }}</td><td class="num">{{ r.balance|money }}</td></tr>
+    {% else %}<tr><td colspan="5" class="empty">No repayments to forecast.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<details class="fold section" id="history">
+  <summary><h2>Repayments so far</h2><span class="sum"><span><small>{{ m.history|length }} repayments</small>{{ m.paid.payments|money }}</span></span></summary>
+  <div class="body">
+  <table class="mtable">
+    <thead><tr><th>Date</th><th class="num opt">Repayment</th><th class="num">Interest</th><th class="num">Principal</th><th class="num">Owed after</th><th class="num opt">Rate</th></tr></thead>
+    <tbody>
+    {% for r in m.history|reverse %}<tr><td class="nowrap" data-sort="{{ r.date.isoformat() }}">{{ r.date|dmy }}</td><td class="num opt">{{ r.payment|money }}</td><td class="num">{{ r.interest|money }}</td><td class="num">{{ r.principal|money }}</td><td class="num">{{ r.balance|money }}</td><td class="num opt">{{ '%.2f'|format(r.rate) if r.rate is not none else '' }}%</td></tr>
+    {% else %}<tr><td colspan="6" class="empty">No repayments yet. Import your spreadsheet in <a href="/mortgage/setup">Mortgage setup</a>.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endblock %}

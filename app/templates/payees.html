@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_macros.html" import period_nav %}
+{% block title %}Payees · Payday{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Payees</h1>
+    <p class="sub">{% if range == 'all' %}All time. <a href="/payees">Show this pay period</a>{% else %}Who your money went to. <a href="/payees?range=all">Show all time</a>{% endif %}</p>
+  </div>
+  {% if range != 'all' %}{{ period_nav('/payees', offset, start, end, ('&q=' ~ q|urlencode) if q else '') }}{% endif %}
+</div>
+<form method="get" action="/payees" class="searchbar" role="search">
+  <input type="hidden" name="offset" value="{{ offset }}">{% if range == 'all' %}<input type="hidden" name="range" value="all">{% endif %}
+  <input type="search" name="q" value="{{ q }}" placeholder="Search payees, such as New World" aria-label="Search payees">
+  <button class="quiet">Search</button>
+</form>
+<div class="panel flush">
+<table class="stack nosearch">
+  <thead><tr><th>Payee</th><th>Usual category</th><th class="num">Times</th><th class="num">Average</th><th class="num">Spent</th><th class="num">Received</th><th>Last</th></tr></thead>
+  <tbody>
+  {% for g in groups %}
+  <tr>
+    <td class="lead"><a href="/payees/detail?name={{ g.name|urlencode }}">{{ g.name }}</a></td>
+    <td class="muted" data-label="">{{ g.category }}</td>
+    <td class="num">{{ g.count }}</td>
+    <td class="num">{{ g.avg|money }}</td>
+    <td class="num {{ 'key' if g.out else 'blank' }}" data-sort="{{ g.out }}">{{ g.out|money if g.out else '' }}</td>
+    <td class="num pos {{ 'blank' if not g.in else ('' if g.out else 'key') }}" data-sort="{{ g.in }}">{{ g.in|money if g.in else '' }}</td>
+    <td class="nowrap" data-sort="{{ g.last.isoformat() }}">{{ g.last|nice }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="empty">Nothing here{% if q %} matching “{{ q }}”{% endif %}.</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if groups %}<tfoot><tr><td class="lead">{{ groups|length }} payee{{ 's' if groups|length != 1 }}</td><td class="blank"></td><td class="blank"></td><td class="blank"></td><td class="num key">{{ total_out|money }}</td><td class="blank"></td><td class="blank"></td></tr></tfoot>{% endif %}
+</table>
+</div>
+{% endblock %}

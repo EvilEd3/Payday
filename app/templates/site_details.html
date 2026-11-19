@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Site details · Payday{% endblock %}
+{% block content %}
+<p class="small"><a href="/site">Households and sign-ins</a></p>
+<div class="pagehead"><div><h1>Site details and sign-up</h1></div></div>
+{% if msg == 'saved' %}<p class="flash" role="status">Saved.</p>{% elif msg == 'bademail' %}<p class="flash bad" role="alert">One of the email addresses isn’t valid.</p>{% elif msg == 'baddate' %}<p class="flash bad" role="alert">Write the date as YYYY-MM-DD.</p>{% endif %}
+<form method="post" action="/site/details" class="narrow">
+  <section class="section" style="margin-top:0">
+    <h2>Sign-up</h2>
+    <div class="panel" style="margin-top:.75rem">
+      {% for value, label, help in [('approval', 'Approval needed', 'People can sign up; you approve each household on Households and sign-ins.'),
+                                    ('open', 'Open', 'Anyone who confirms their email gets a household straight away.'),
+                                    ('invite', 'Invite only', 'No public sign-up. Households are created by you.')] %}
+      <label class="check radio"><input type="radio" name="signup_mode" value="{{ value }}" {% if info.signup_mode == value %}checked{% endif %}>
+        <span><strong>{{ label }}</strong><br><span class="muted small">{{ help }}</span></span></label>
+      {% endfor %}
+      {% if not info.connect %}<p class="muted small" style="margin:.5rem 0 0">Akahu Connect isn’t set up yet (AKAHU_CLIENT_ID and AKAHU_CLIENT_SECRET), so new households can’t connect a bank. See <a href="/help/bank#fullapp">Opening Connect to subscribers</a>.</p>{% endif %}
+    </div>
+  </section>
+  <section class="section">
+    <h2>Business details</h2>
+    <div class="panel fields" style="margin-top:.75rem">
+      {% for key, label, default in fields %}
+      <label class="{{ 'wide' if key in ('address', 'data_location', 'hosting_provider') }}">{{ label }}
+        <input name="{{ key }}" value="{{ info[key] if key not in ('legal_name', 'privacy_email', 'security_email') else (site_setting_raw(key)) }}" maxlength="200"
+          {% if key.endswith('email') %}type="email"{% elif key == 'policy_date' %}type="date"{% endif %}></label>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="margin-top:.75rem">These fill in the <a href="/legal/privacy">privacy policy</a>, <a href="/legal/terms">terms</a>, <a href="/legal/security">security page</a> and <a href="/contact">contact page</a>. Have a lawyer read the policies before you open sign-up.</p>
+  </section>
+  <div class="actions" style="margin-top:1rem"><button>Save</button></div>
+</form>
+{% endblock %}

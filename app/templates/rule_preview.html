@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Rule preview · Payday{% endblock %}
+{% block content %}
+<p class="small"><a href="/settings?tab=rules">Back to rules</a></p>
+<div class="pagehead">
+  <div>
+    <h1>Rule preview</h1>
+    <p class="sub">{% if usable %}{{ describe_rule(rule, accounts) }}{% if target %}. File as <strong>{{ target }}</strong>{% endif %}.{% else %}This rule needs at least one valid condition before it can match anything.{% endif %}</p>
+  </div>
+</div>
+
+<div class="panel">
+  <p style="margin:0"><strong>{{ total }}</strong> transaction{{ 's' if total != 1 }} match{{ 'es' if total == 1 }}.
+  {% if total %}{{ changing }} would move to {{ target or 'the chosen category' }}.
+  {% if locked %}{{ locked }} stay as they are, because you set them by hand or they’re bill payments or transfers.{% endif %}{% endif %}</p>
+  {% if usable and target %}
+  <form class="admin-only actions" method="post" action="{{ '/rules/' ~ rule_id if rule_id else '/rules' }}" style="margin-top:1rem">
+    {% for k in ['pattern','direction','min_amount','max_amount','account_id','category_id','new_category','kind'] %}
+      {% if form.get(k) is not none %}<input type="hidden" name="{{ k }}" value="{{ form.get(k) }}">{% endif %}
+    {% endfor %}
+    <button>{{ 'Save changes to this rule' if rule_id else 'Save this rule' }}</button>
+    <a href="/settings?tab=rules">Change the conditions</a>
+  </form>
+  {% endif %}
+</div>
+
+{% if matches %}
+<div class="panel flush" style="margin-top:1rem">
+<table class="stack">
+  <thead><tr><th>Description</th><th>Date</th><th>Account</th><th>Category now</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for t in matches %}
+  <tr><td class="lead">{{ t.merchant or t.description }}{% if t.merchant and t.merchant|lower != t.description|lower %}<div class="sub" style="font-weight:400">{{ t.description }}</div>{% endif %}</td>
+      <td class="nowrap" data-label="" data-sort="{{ t.date.isoformat() }}">{{ t.date|nice }}</td>
+      <td data-label="">{{ accounts[t.account_id].name if t.account_id in accounts else '' }}</td>
+      <td data-label="Now">{{ cats[t.category_id].name if t.category_id in cats else '' }}
+        {% if t.category_source in ('manual','bill','transfer') %}<span class="chip">{{ {'manual': 'set by you', 'bill': 'bill', 'transfer': 'transfer'}[t.category_source] }}</span>{% endif %}</td>
+      <td class="num key {{ 'pos' if t.amount > 0 }}" data-sort="{{ t.amount }}">{{ t.amount|money(True) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if total > matches|length %}<p class="muted small" style="margin-top:.75rem">Showing the latest {{ matches|length }}.</p>{% endif %}
+{% endif %}
+{% endblock %}

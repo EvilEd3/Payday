@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en-NZ" data-theme="bush" data-mode="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+{% set titles = {'password': 'Sign in', 'code': 'Enter your code', 'setup': 'Set up two-step sign-in', 'codes': 'Your backup codes',
+  'invite': 'Join Payday', 'reset': 'Choose a new password', 'badlink': 'Link not valid', 'signup': 'Create your household',
+  'checkemail': 'Check your email', 'pending': 'Waiting for approval', 'forgot': 'Forgotten password', 'forgotsent': 'Check your email'} %}
+{% set f = form or {} %}
+<title>{{ 'Set up Payday' if setup else titles.get(step, 'Sign in') }} · Payday</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<meta name="theme-color" content="#F3F5F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C1412" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/theme.css?v={{ theme_version }}">
+<link rel="stylesheet" href="{{ asset('app.css') }}">
+<script src="{{ asset('app.js') }}" defer></script>
+</head>
+<body class="signin">
+<main>
+  <div class="brand"><img src="/static/icon-192.png" alt="" width="44" height="44"><span>Payday</span></div>
+
+  {% if setup %}
+  <h1>Set up Payday</h1>
+  <p class="muted">Create your login. You’ll run this Payday site, and be the admin of its first household.</p>
+  <form method="post" action="/setup" class="card">
+    <label>Username <input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus pattern="[A-Za-z0-9._\-]{3,40}"></label>
+    <label>Password <input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    <p class="hint">At least 10 characters. A few unrelated words is easiest to remember.</p>
+    <label>Email <input name="email" type="email" autocomplete="email" placeholder="For password resets and sign-up approvals"></label>
+    <label>Name for your first household <input name="profile" value="Home" maxlength="60"></label>
+    {% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+    <button>Create and continue</button>
+  </form>
+
+  {% elif step == 'password' %}
+  <h1>Sign in</h1>
+  <p class="muted">Your money per day until payday.</p>
+  {% if msg == 'expired' %}<p class="flash" role="status">That took a while, so please sign in again.</p>
+  {% elif msg == 'reset' %}<p class="flash" role="status">Password changed. Sign in with it now.</p>
+  {% elif msg == 'verified' %}<p class="flash" role="status">Email address confirmed. Sign in to carry on.</p>{% endif %}
+  <form method="post" action="/login" class="card">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Username or email <input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    {% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+    <button>Continue</button>
+  </form>
+  {% if resend %}<form method="post" action="/signup/resend" class="small"><input type="hidden" name="username" value="{{ resend }}"><button class="linkish">Send the confirmation email again</button></form>{% endif %}
+  <p class="small links"><a href="/forgot">Forgotten your password?</a>{% if site_info().signup_mode != 'invite' %} <a href="/signup">Create a household</a>{% endif %}</p>
+
+  {% elif step == 'code' %}
+  <h1>Enter your code</h1>
+  <p class="muted">Open your authenticator app and type the 6-digit code for Payday. Lost your phone? Use one of your backup codes.</p>
+  <form method="post" action="/2fa/code" class="card">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Code <input name="code" class="code-in" inputmode="numeric" autocomplete="one-time-code" maxlength="9" required autofocus></label>
+    {% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+    <button>Sign in</button>
+  </form>
+  <p class="small"><a href="/login">Start again</a></p>
+
+  {% elif step == 'setup' %}
+  <h1>Set up two-step sign-in</h1>
+  <p class="muted">Payday is reachable from the internet, so every sign-in needs a code from your phone as well as your password.</p>
+  <div class="card">
+    <ol class="steps">
+      <li>Install an authenticator app if you don’t have one: Google Authenticator, Microsoft Authenticator, 1Password or Bitwarden all work.</li>
+      <li>In the app, add an account and scan this code.
+        <div class="qr">{{ qr }}</div>
+        <details class="small"><summary>Can’t scan it?</summary>Choose “enter a setup key” and type <code class="secret">{{ secret }}</code> (time based, account {{ username }}).</details></li>
+      <li>Type the 6-digit code the app shows.</li>
+    </ol>
+    <form method="post" action="/2fa/setup">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label>Code from the app <input name="code" class="code-in" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required autofocus></label>
+      {% if request.query_params.get('bad') %}<p class="flash bad" role="alert">That code didn’t match. Check the time on your phone is set automatically, and try the newest code.</p>{% endif %}
+      <button>Turn on and continue</button>
+    </form>
+  </div>
+
+  {% elif step == 'codes' %}
+  <h1>Your backup codes</h1>
+  <p class="muted">If you lose your phone, each of these codes signs you in once instead of an app code. Save them now, in a password manager or printed somewhere safe. They won’t be shown again.</p>
+  <div class="card">
+    <ul class="backup-codes">{% for c in codes %}<li><code>{{ c }}</code></li>{% endfor %}</ul>
+    <p><button type="button" class="quiet" data-copy="{{ codes|join('\n') }}">Copy codes</button></p>
+    <a class="btn" href="{{ next if next.startswith('/') else '/' }}">I’ve saved them, continue</a>
+  </div>
+
+  {% elif step == 'invite' %}
+  <h1>Join {{ profile_name }}</h1>
+  <p class="muted">You’ve been invited to the {{ profile_name }} profile on Payday, {{ 'with admin rights' if role == 'admin' else 'with read-only access' }}.</p>
+  <form method="post" action="/invite/{{ token }}" class="card">
+    {% if signed_in %}
+    <p>You’re signed in as <strong>{{ signed_in }}</strong>. Join with this login?</p>
+    {% else %}
+    <label>Choose a username <input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus pattern="[A-Za-z0-9._\-]{3,40}"></label>
+    <label>Email <input name="email" type="email" autocomplete="email" required></label>
+    <label>Choose a password <input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    <p class="hint">At least 10 characters. Next you’ll set up a code on your phone.</p>
+    <label class="check"><input type="checkbox" name="terms" value="true" required> <span>I agree to the <a href="/legal/terms" target="_blank">terms</a> and <a href="/legal/privacy" target="_blank">privacy policy</a></span></label>
+    {% endif %}
+    {% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+    <button>Join {{ profile_name }}</button>
+  </form>
+  {% if not signed_in %}<p class="small">Already use Payday? <a href="/login?next={{ ('/invite/' ~ token)|urlencode }}">Sign in first</a>, then open the link again.</p>{% endif %}
+
+  {% elif step == 'reset' %}
+  <h1>Choose a new password</h1>
+  <p class="muted">For {{ username }}.</p>
+  <form method="post" action="/reset/{{ token }}" class="card">
+    <label>New password <input name="password" type="password" autocomplete="new-password" required minlength="10" autofocus></label>
+    <p class="hint">At least 10 characters.</p>
+    {% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+    <button>Save password</button>
+  </form>
+
+  {% elif step == 'signup' %}
+  <h1>Create your household</h1>
+  {% if mode == 'invite' %}
+  <p class="muted">Sign-up is by invitation at the moment. If someone in your household uses Payday, ask them for an invite link.</p>
+  {% else %}
+  <p class="muted">{{ 'New households are approved by hand during early access. ' if mode == 'approval' }}You can invite the rest of your household afterwards.</p>
+  <form method="post" action="/signup" class="card">
+    <label>Household name <input name="household" maxlength="60" required value="{{ f.household or '' }}" placeholder="e.g. The Smiths" autofocus></label>
+    <label>Username <input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required pattern="[A-Za-z0-9._\-]{3,40}" value="{{ f.username or '' }}"></label>
+    <label>Email <input name="email" type="email" autocomplete="email" required value="{{ f.email or '' }}"></label>
+    <label>Password <input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    <p class="hint">At least 10 characters. A few unrelated words is easiest to remember.</p>
+    <label class="check"><input type="checkbox" name="terms" value="true" required> <span>I agree to the <a href="/legal/terms" target="_blank">terms</a> and <a href="/legal/privacy" target="_blank">privacy policy</a></span></label>
+    {% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+    <button>Create household</button>
+  </form>
+  {% endif %}
+  <p class="small">Already have an account? <a href="/login">Sign in</a></p>
+
+  {% elif step == 'checkemail' or step == 'forgotsent' %}
+  <h1>Check your email</h1>
+  <p class="muted">{% if step == 'forgotsent' %}If that address belongs to a confirmed account, we’ve sent a link to choose a new password. It works for 24 hours.{% else %}We’ve sent a link to {{ email or 'your email address' }}. Open it to confirm your address. It works for 48 hours.{% endif %}</p>
+  <p class="small"><a href="/login">Back to sign in</a></p>
+
+  {% elif step == 'pending' %}
+  <h1>Thanks, you’re confirmed</h1>
+  <p class="muted">Your household is waiting to be approved. We’ll email you as soon as it’s ready.</p>
+
+  {% elif step == 'forgot' %}
+  <h1>Forgotten password</h1>
+  <p class="muted">Enter your account’s email address and we’ll send you a link to choose a new password.</p>
+  <form method="post" action="/forgot" class="card">
+    <label>Email <input name="email" type="email" autocomplete="email" required autofocus></label>
+    <button>Send link</button>
+  </form>
+  <p class="small"><a href="/login">Back to sign in</a></p>
+
+  {% else %}
+  <h1>That link doesn’t work</h1>
+  <p class="muted">It may have been used already, or be more than a week old. Ask for a new one.</p>
+  <p><a class="btn" href="/login">Go to sign in</a></p>
+  {% endif %}
+</main>
+<footer class="sitefoot"><nav aria-label="About"><a href="/help">Help</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/contact">Contact</a></nav></footer>
+</body>
+</html>

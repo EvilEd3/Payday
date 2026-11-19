@@ -1,0 +1,28 @@
+{% extends "public.html" %}
+{% block title %}Security · {{ info.business_name }}{% endblock %}
+{% block content %}
+<h1>Security</h1>
+<p>How {{ info.business_name }} protects your information.</p>
+<h2>Signing in</h2>
+<ul>
+  <li>Every sign-in needs your password and a code from an authenticator app. One-time backup codes cover a lost phone.</li>
+  <li>Passwords are stored scrambled with scrypt, never as written. Common passwords are refused.</li>
+  <li>Repeated wrong passwords or codes pause sign-in. Sign-ins end after 30 days, or a week without use, and you can sign out every device at once.</li>
+</ul>
+<h2>Your bank connection</h2>
+<ul>
+  <li>Bank access is read only, through <a href="https://www.akahu.nz" rel="noopener">Akahu</a>. {{ info.business_name }} never sees your internet banking password.</li>
+  <li>Connection tokens are encrypted and never shown again once saved.</li>
+  <li>You can disconnect at any time, here or at my.akahu.nz.</li>
+</ul>
+<h2>Your data</h2>
+<ul>
+  <li>Everything travels over HTTPS.</li>
+  <li>Each household’s data is stored separately, and every request checks you belong to the household you’re viewing.</li>
+  <li>Read-only members can’t change anything; this is enforced on the server.</li>
+  <li>Backups you download can be locked with a passphrase. They never include bank connection tokens.</li>
+  <li>Pages are protected against other websites embedding them or sending changes on your behalf.</li>
+</ul>
+<h2>Reporting a security problem</h2>
+<p>If you think you’ve found a security problem, please email {% if info.security_email %}<a href="mailto:{{ info.security_email }}">{{ info.security_email }}</a>{% else %}us (see <a href="/contact">Contact</a>){% endif %} with what you found and how to reproduce it. Please don’t access other people’s data or disrupt the service while testing. We’ll reply within 5 working days and keep you updated while we fix it.</p>
+{% endblock %}

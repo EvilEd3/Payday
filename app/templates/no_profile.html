@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}No profile · Payday{% endblock %}
+{% block content %}
+<div class="narrow" style="margin-top:2rem">
+  <h1>You’re not in a household yet</h1>
+  <p class="lede">Your login works, but you don’t belong to any Payday household. Ask someone in the household to send you an invite link from Settings, People, then open it while signed in.</p>
+  <form method="post" action="/logout"><button class="quiet">Sign out</button></form>
+</div>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import period_nav %}
+{% block title %}{{ acc.name }} · Payday{% endblock %}
+{% block content %}
+{% set owed = acc.type in ('CREDITCARD', 'LOAN') %}
+<p class="small"><a href="/#accounts">Overview</a></p>
+<div class="pagehead">
+  <div>
+    <h1>{{ acc.name }}</h1>
+    <p class="sub">{% if acc.nickname and acc.bank_name and acc.bank_name != acc.nickname %}{{ acc.bank_name }}, {% endif %}{{ acc.institution }}{{ ', ' if acc.institution }}{{ acc.type|acctype }}{% if last_sync %}. As of the last sync, {{ last_sync }}{% endif %}</p>
+  </div>
+  {% if acc.type == 'LOAN' %}<a class="btn quiet small" href="{{ '/mortgage' if has_loan() else '/mortgage/setup' }}">Mortgage {{ 'summary' if has_loan() else 'setup' }}</a>{% endif %}
+  {% if not all %}{{ period_nav('/accounts/' ~ acc.id, offset, start, end) }}{% endif %}
+</div>
+
+<div class="kpis">
+  <div class="kpi"><b>{{ acc.balance_available|money if acc.balance_available is not none else '–' }}</b><span>{{ 'Available credit' if owed else 'Available' }}, from the bank</span></div>
+  <div class="kpi"><b class="{{ 'neg' if acc.balance_current < 0 }}">{{ acc.balance_current|money }}</b><span>Balance, from the bank</span></div>
+  <div class="kpi"><b class="{{ 'neg' if with_pending < 0 }}">{{ with_pending|money }}</b><span>Balance with {{ pending_count }} pending{% if own %}, from your opening balance{% endif %}</span></div>
+  {% if own %}<div class="kpi"><b class="{{ '' if gap|abs < 0.005 else 'neg' }}">{{ 'Matches' if gap|abs < 0.005 else gap|money(True) }}</b>
+    <span>{% if gap|abs < 0.005 %}Your opening balance plus transactions equals the bank’s balance{% else %}Bank’s balance less your opening balance plus transactions. Something is missing or different{% endif %}</span></div>{% endif %}
+</div>
+
+<p class="lede small" style="margin-top:1rem">
+  {% if own %}The Balance column starts from your opening balance of {{ acc.opening_balance|money }} at the start of {{ acc.opening_date|long }} {{ acc.opening_date.year }}
+    (<a class="admin-only" href="/settings?tab=accounts">change it in Settings</a>) and adds each transaction in turn.
+  {% else %}The Balance column is worked back from the bank’s balance at the last sync. To start it from your own figure, set an
+    opening balance in <a href="/settings?tab=accounts">Settings → Accounts</a>.{% endif %}
+  Pending transactions are included on their dates and marked. Your banking app leaves them out of its Balance column, so from
+  the first pending row onwards the two will differ by the pending amounts.</p>
+
+<section class="section" style="margin-top:1.25rem">
+  <div class="listhead" style="margin-top:0">
+    <h2>{{ 'All transactions' if all else 'Transactions' }} <small>{{ rows|length }}{% if rows %}: {{ shown_in|money }} in, {{ shown_out|money }} out{% endif %}</small></h2>
+    <a class="small" href="/accounts/{{ acc.id }}{{ '' if all else '?all=1' }}">{{ 'Show by pay period' if all else 'Show everything' }}</a>
+  </div>
+  <div class="panel flush">
+  <table class="stack recon nosort">
+    <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+    <tbody>
+    {% set ns = namespace(day=none) %}
+    {% for e in rows %}
+    {% set t = e.t %}
+    {% set newday = e.date != ns.day %}{% set ns.day = e.date %}
+    <tr class="{{ 'newday' if newday and not loop.first }} {{ 'pending' if e.pending }}">
+      <td class="nowrap {{ '' if newday else 'repeat' }}" data-label="">{{ e.date|nice }}</td>
+      {% if e.pending %}
+      <td class="lead">{{ t.description }} <span class="chip due">Pending</span></td>
+      <td data-label="">{% if e.bill %}<a href="/bills/{{ e.bill.id }}">{{ e.bill.name }}</a> bill{% else %}Not settled yet{% endif %}</td>
+      {% else %}
+      <td class="lead">{{ t.merchant or t.description }}{% if t.merchant and t.merchant|lower != t.description|lower %} <span class="muted" style="font-weight:400">{{ t.description }}</span>{% endif %}</td>
+      <td data-label="">{{ cats[t.category_id].name if t.category_id in cats else '' }}</td>
+      {% endif %}
+      <td class="num key {{ 'pos' if e.amount > 0 }}">{{ e.amount|money(True) }}</td>
+      <td class="num bal {{ 'neg' if e.after < 0 }}" data-label="Balance">{{ e.after|money }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="empty">No transactions in this {{ 'account' if all else 'pay period' }}.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if earliest %}<p class="muted small" style="margin-top:.75rem">Payday has this account’s transactions back to {{ earliest|long }} {{ earliest.year }}. Rows on the same day are in the order the bank sent them, with pending ones last.</p>{% endif %}
+</section>
+{% endblock %}

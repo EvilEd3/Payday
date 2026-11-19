@@ -1,0 +1,49 @@
+{# Shared pieces used on several pages. #}
+
+{% macro chev(dir) %}<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ 'M10 3L5 8l5 5' if dir == 'left' else 'M6 3l5 5-5 5' }}"/></svg>{% endmacro %}
+
+{# Pay-period switcher. qs = extra query string that must survive, starting with & #}
+{% macro period_nav(path, offset, start, end, qs='') %}
+<nav class="period" aria-label="Pay period">
+  <a href="{{ path }}?offset={{ offset - 1 }}{{ qs }}" aria-label="Previous pay period" title="Previous pay period">{{ chev('left') }}</a>
+  <span class="label">{{ start|short }} – {{ end|daybefore|short }}</span>
+  <a href="{{ path }}?offset={{ offset + 1 }}{{ qs }}" aria-label="Next pay period" title="Next pay period"
+     {% if offset >= 0 %}aria-disabled="true" tabindex="-1"{% endif %}>{{ chev('right') }}</a>
+  {% if offset < 0 %}<a class="now" href="{{ path }}{{ ('?' ~ qs[1:]) if qs else '' }}">Now</a>{% endif %}
+</nav>
+{% endmacro %}
+
+{% macro dots() %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01"/><path d="M12 12h.01"/><path d="M19 12h.01"/></svg>{% endmacro %}
+
+{% macro category_options(cats, selected) %}{% for c in cats %}<option value="{{ c.id }}" {% if c.id == selected %}selected{% endif %}>{{ c.name }}</option>{% endfor %}{% endmacro %}
+
+{# The fields shared by "add a bill" and "edit a bill". p = values to show. #}
+{% macro bill_fields(p, cats, today) %}
+  <label>Name <input name="name" required maxlength="80" placeholder="Power" value="{{ p.get('name', '') }}"></label>
+  <label>Usual amount ($) <input class="amt-in" name="amount" type="number" step="0.01" min="0.01" required placeholder="180.00" value="{{ p.get('amount', '') }}"></label>
+  <label>How often
+    <select name="frequency">
+      {% for f in ['weekly','fortnightly','monthly','quarterly','yearly'] %}<option value="{{ f }}" {% if f == p.get('frequency', 'monthly') %}selected{% endif %}>{{ f|capitalize }}</option>{% endfor %}
+    </select></label>
+  <label>Any one due date <input name="anchor_date" type="date" required value="{{ p.get('anchor_date') or today.isoformat() }}"></label>
+  <label>Text on your statement <input name="match_pattern" required placeholder="MERCURY" value="{{ p.get('match_pattern', '') }}"></label>
+  <label>Amount can vary by (%) <input name="tolerance_pct" type="number" step="1" min="0" max="100" value="{{ p.get('tolerance_pct', 10) }}"></label>
+  <label>Days early or late <input name="window_days" type="number" min="0" max="31" value="{{ p.get('window_days', 4) }}"></label>
+  <label>Category
+    <select name="category_id"><option value="">Bills</option>
+      {% for c in cats if c.kind == 'expense' and c.name not in ['Bills', 'Uncategorised'] %}<option value="{{ c.id }}" {% if c.id == p.get('category_id') %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
+{% endmacro %}
+
+{# The condition fields shared by "new rule" and "edit rule". form = id of the form they belong to. #}
+{% macro rule_fields(r, accounts, form='') %}
+  <label>Text contains <input {% if form %}form="{{ form }}"{% endif %} name="pattern" value="{{ r.pattern if r else '' }}" placeholder="COUNTDOWN" autocapitalize="none"></label>
+  <label>Direction
+    <select {% if form %}form="{{ form }}"{% endif %} name="direction">
+      {% for v, l in [('any','Money in or out'),('out','Money out'),('in','Money in')] %}<option value="{{ v }}" {% if r and r.direction == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select></label>
+  <label>Amount from ($) <input {% if form %}form="{{ form }}"{% endif %} class="amt-in" name="min_amount" inputmode="decimal" placeholder="Any" value="{{ '%.2f'|format(r.min_amount) if r and r.min_amount is not none else '' }}"></label>
+  <label>Amount to ($) <input {% if form %}form="{{ form }}"{% endif %} class="amt-in" name="max_amount" inputmode="decimal" placeholder="Any" value="{{ '%.2f'|format(r.max_amount) if r and r.max_amount is not none else '' }}"></label>
+  <label>Account
+    <select {% if form %}form="{{ form }}"{% endif %} name="account_id"><option value="">Any account</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {% if r and r.account_id == a.id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}</select></label>
+{% endmacro %}

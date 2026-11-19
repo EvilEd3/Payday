@@ -1,0 +1,35 @@
+{% extends "public.html" %}
+{% block mainclass %}landing{% endblock %}
+{% block content %}
+{% if request.query_params.get('msg') == 'deleted' %}<p class="flash" role="status">Your account and its data have been deleted.</p>{% endif %}
+<section class="lp-hero">
+  <div class="lp-copy">
+    <h1>What can I spend today?</h1>
+    <p class="lp-sub">Payday answers that every morning. It follows your pay cycle instead of the calendar month, keeps your bills in view, and divides what’s left by the days until you’re paid again.</p>
+    <div class="actions">
+      {% if info.signup_mode != 'invite' %}<a class="btn" href="/signup">Create your household</a>{% endif %}
+      <a class="btn quiet" href="/login">Sign in</a>
+    </div>
+    <p class="muted small">{% if info.signup_mode == 'approval' %}New households are approved by hand while we’re in early access. {% elif info.signup_mode == 'invite' %}Sign-up is by invitation at the moment. {% endif %}Free during early access. For New Zealand bank accounts.</p>
+  </div>
+  <figure class="lp-shot"><img src="/static/overview-demo.png" alt="Payday’s overview for a sample household: $143.25 a day until payday, with bills to come" width="825" height="720"></figure>
+</section>
+
+<section class="lp-points">
+  <div><h2>Runs on your pay cycle</h2><p>Paid on the 15th? Your budget runs 15th to 14th, and moves when payday lands on a weekend.</p></div>
+  <div><h2>Bills that tick themselves off</h2><p>Add your power, rent or mortgage once. Payments are matched as they arrive, and anything late stays in view.</p></div>
+  <div><h2>Bank sync for NZ banks</h2><p>Connect through Akahu, New Zealand’s open finance service. Payday can read your accounts; it can’t move money.</p></div>
+  <div><h2>Room for the household</h2><p>Invite your partner, with full or look-only access. Everyone signs in with their own password and phone code.</p></div>
+</section>
+
+<section class="lp-trust">
+  <h2>Your data</h2>
+  <ul>
+    <li>Read-only bank access, which you can cut off at any time.</li>
+    <li>Two-step sign-in for everyone.</li>
+    <li>Each household’s data is kept separate from every other.</li>
+    <li>Download or delete everything whenever you like.</li>
+  </ul>
+  <p><a href="/legal/security">How Payday protects your data</a> · <a href="/legal/privacy">Privacy policy</a></p>
+</section>
+{% endblock %}

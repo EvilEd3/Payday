@@ -1,0 +1,33 @@
+{% set me = request.state.user %}{% set info = site_info() %}
+<!doctype html>
+<html lang="en-NZ" data-theme="bush" data-mode="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}{{ info.business_name }}{% endblock %}</title>
+<meta name="description" content="Know what you can spend each day until payday. Bank sync for New Zealand banks, bills that tick themselves off, and a budget that runs on your pay cycle.">
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#F1F4F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A1110" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="/static/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/theme.css?v={{ theme_version }}">
+<link rel="stylesheet" href="{{ asset('app.css') }}">
+<script src="{{ asset('app.js') }}" defer></script>
+</head>
+<body class="public page-{{ page }}">
+<header class="pubbar">
+  <a class="brand" href="/welcome"><img src="/static/icon-192.png" alt="" width="28" height="28"><span>{{ info.business_name }}</span></a>
+  <nav aria-label="Main">
+    <a href="/help" {% if page == 'help' %}aria-current="page"{% endif %}>Help</a>
+    {% if me %}<a class="btn small" href="/">Open Payday</a>
+    {% else %}<a href="/login">Sign in</a>{% if info.signup_mode != 'invite' %}<a class="btn small" href="/signup">Sign up</a>{% endif %}{% endif %}
+  </nav>
+</header>
+<main class="{% block mainclass %}prose-page{% endblock %}">{% block content %}{% endblock %}</main>
+<footer class="sitefoot">
+  <nav aria-label="About"><a href="/help">Help</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/legal/security">Security</a><a href="/contact">Contact</a></nav>
+  <p>{{ info.legal_name }}{% if info.nzbn %} · NZBN {{ info.nzbn }}{% endif %}</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,44 @@
+{% extends "public.html" %}
+{% block title %}Terms of service · {{ info.business_name }}{% endblock %}
+{% block content %}
+{% set who = info.legal_name %}
+<h1>Terms of service</h1>
+<p class="muted">{% if info.policy_date %}Last updated {{ info.policy_date }}. {% endif %}These terms are an agreement between you and {{ who }}{% if info.nzbn %} (NZBN {{ info.nzbn }}){% endif %} for using {{ info.business_name }}.</p>
+
+<h2>The service</h2>
+<p>{{ info.business_name }} helps you budget around your pay cycle. It shows information from your bank accounts (through Akahu) and what you enter. It can read bank information; it can’t move money or make payments.</p>
+<p>{{ info.business_name }} gives general budgeting information, not financial advice. Figures depend on the information your bank provides and may be late or incomplete, so check your bank before relying on a balance.</p>
+
+<h2>Who can use it</h2>
+<p>You must be 18 or older and use it for your own or your household’s finances. Keep your password and authenticator safe, and don’t share your login; invite people instead. You’re responsible for who you invite and the access you give them.</p>
+
+<h2>Connecting your bank</h2>
+<p>Bank connections are provided by Akahu under its own terms, which you agree to when you connect. You can disconnect at any time in Settings, Bank connection, or at my.akahu.nz.</p>
+
+<h2>Price</h2>
+<p>{{ info.business_name }} is free during early access. If we introduce paid plans, we’ll tell you at least 30 days before you’d be charged, and you can leave before then.</p>
+
+<h2>Acceptable use</h2>
+<p>Don’t try to access other people’s information, interfere with the service, test its security without our permission (see <a href="/legal/security">Security</a>), or use it for anything unlawful.</p>
+
+<h2>Availability</h2>
+<p>We aim to keep {{ info.business_name }} running, but it may sometimes be unavailable for maintenance or reasons outside our control. We may change features over time.</p>
+
+<h2>Your information</h2>
+<p>Your information stays yours. You can download it or delete your account at any time. How we handle it is set out in the <a href="/legal/privacy">privacy policy</a>.</p>
+
+<h2>Ending the agreement</h2>
+<p>You can stop using {{ info.business_name }} and delete your account at any time. We may suspend or close an account that breaks these terms or puts the service or other people at risk; where we can, we’ll warn you first and give you a chance to download your information.</p>
+
+<h2>Liability</h2>
+<p>Nothing in these terms limits your rights under the Consumer Guarantees Act 1993 or the Fair Trading Act 1986 where they apply. If you use {{ info.business_name }} for a business, you agree the Consumer Guarantees Act doesn’t apply. As far as the law allows, we’re not liable for indirect losses, or for decisions made using figures in {{ info.business_name }}.</p>
+
+<h2>Changes</h2>
+<p>We’ll tell you before making changes to these terms that affect you. If you don’t agree, you can delete your account.</p>
+
+<h2>Law</h2>
+<p>New Zealand law applies, and New Zealand courts have jurisdiction.</p>
+
+<h2>Contact</h2>
+<p>{% if info.contact_email %}<a href="mailto:{{ info.contact_email }}">{{ info.contact_email }}</a>{% endif %}{% if info.address %}, {{ info.address }}{% endif %}. See also <a href="/contact">Contact</a>.</p>
+{% endblock %}

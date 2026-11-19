@@ -1,0 +1,54 @@
+{% extends "public.html" %}
+{% block title %}Connecting your bank · {{ info.business_name }}{% endblock %}
+{% block content %}
+{% set owner = request.state.user and request.state.user.is_owner %}
+<h1>Connecting your bank</h1>
+<p>{{ info.business_name }} reads your accounts through <a href="https://www.akahu.nz" rel="noopener">Akahu</a>, a New Zealand open finance service that works with all the main banks. Access is read only: nothing can move money.</p>
+<nav class="toc" aria-label="On this page"><a href="#connect">Connect your bank</a><a href="#after">After connecting</a><a href="#disconnect">Disconnect</a>{% if owner %}<a href="#personal">Your own household (personal app)</a><a href="#fullapp">Opening Connect to subscribers</a>{% endif %}</nav>
+
+<h2 id="connect">Connect your bank</h2>
+{% if info.connect %}
+<ol class="steps">
+  <li>In {{ info.business_name }}, go to <strong>Settings → Bank connection</strong> and choose <strong>Connect your bank</strong>. Only household admins can do this.</li>
+  <li>You’re taken to Akahu. Sign in, or create a free Akahu account. The first time, Akahu asks you to confirm your identity with your NZ driver licence or passport and to set up two-step sign-in.</li>
+  <li>Choose your bank and sign in to it inside Akahu. Your banking password goes to your bank, never to {{ info.business_name }}.</li>
+  <li>Tick the accounts to share. Leave out anything you don’t want in your budget; you can change this later at my.akahu.nz.</li>
+  <li>Approve. You’re brought back to {{ info.business_name }} and the first sync starts. It takes a minute or two.</li>
+</ol>
+{% else %}
+<p class="notice"><span>Bank connections for new households aren’t open yet. You can set up your household, bills and categories now; we’ll email you when connecting is available.</span></p>
+{% endif %}
+
+<h2 id="after">After connecting</h2>
+<ul>
+  <li><strong>Choose what counts.</strong> In Settings → Accounts, tick <em>Balance counts</em> for accounts whose money you spend day to day, and <em>Budget counts</em> for accounts whose spending and income belong in your budget. Savings, KiwiSaver and loans are usually left out.</li>
+  <li><strong>Add your bills.</strong> Bills → Add, or turn a past payment into a bill from its menu. Payments are matched automatically from then on.</li>
+  <li><strong>Daily sync.</strong> {{ info.business_name }} checks for new transactions once a day (Settings → Pay cycle sets the time). Admins can press <em>Sync now</em> on the Overview at any time.</li>
+  <li><strong>Banks take a while.</strong> New card purchases show as pending first and settle a day or two later; some banks only send transactions overnight.</li>
+</ul>
+
+<h2 id="disconnect">Disconnect</h2>
+<p>Settings → Bank connection → <strong>Disconnect</strong> stops {{ info.business_name }} reading your bank and tells Akahu to end the connection. The transactions already synced stay until you delete them (or your account). You can also remove access at <a href="https://my.akahu.nz" rel="noopener">my.akahu.nz</a>.</p>
+
+{% if owner %}
+<h2 id="personal">Your own household: an Akahu personal app</h2>
+<p class="muted">Only you see this section, as site owner. A personal app connects your own Akahu account and nobody else’s.</p>
+<ol class="steps">
+  <li>Sign up at <a href="https://my.akahu.nz" rel="noopener">my.akahu.nz</a>, confirm your identity and turn on two-step sign-in.</li>
+  <li>Connect your bank inside Akahu and choose the accounts to share.</li>
+  <li>Open <strong>Developers</strong> in my.akahu.nz and create a personal app.</li>
+  <li>Copy the <strong>App ID Token</strong> (starts <code>app_token_</code>) and the <strong>User Access Token</strong> (starts <code>user_token_</code>).</li>
+  <li>In {{ info.business_name }}: Settings → Bank connection → paste both under <em>Personal app tokens</em>, then <strong>Save and test</strong>.</li>
+</ol>
+
+<h2 id="fullapp">Opening Connect to subscribers</h2>
+<p class="muted">Needed before other households can connect their banks.</p>
+<ol class="steps">
+  <li>Contact Akahu (<a href="https://developers.akahu.nz" rel="noopener">developers.akahu.nz</a>) about a <strong>Full App</strong> and complete their app accreditation. Ask whether you also need accreditation under the Customer and Product Data Act.</li>
+  <li>In the app’s settings, add this redirect address exactly: <code>{{ callback }}</code></li>
+  <li>Put the app’s details in stack.env: <code>AKAHU_CLIENT_ID=app_token_…</code> and <code>AKAHU_CLIENT_SECRET=…</code>, then restart {{ info.business_name }}.</li>
+  <li>Test with your own household: Settings → Bank connection → Connect your bank.</li>
+  <li>Then switch sign-up to open or approval in Site details.</li>
+</ol>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Restore · Payday{% endblock %}
+{% block content %}
+{% set prof = request.state.profile %}
+<p class="small"><a href="/settings?tab=data">Backup and export</a></p>
+<div class="pagehead"><div><h1>Restore {{ prof.name }}?</h1>
+  <p class="sub">From a backup of {{ from_profile or 'a household' }}{% if created %}, made {{ created }} UTC{% endif %}.</p></div></div>
+<div class="narrow">
+  <div class="panel">
+    <p>The backup holds:</p>
+    <ul class="counts">{% for k, v in counts.items() %}<li><b>{{ '{:,}'.format(v) }}</b> {{ k }}</li>{% endfor %}</ul>
+    <p><strong>Everything now in {{ prof.name }} will be replaced</strong> with this. Payday keeps the current data as a file beside the new one until the next restore, but download a backup first if you might want it.</p>
+    <p class="muted small">Bank connections aren’t in backups: connect again after restoring.</p>
+    <form method="post" action="/data/restore" class="fields">
+      <input type="hidden" name="token" value="{{ token }}">
+      <label class="wide">Type <strong>{{ prof.name }}</strong> to confirm <input name="confirm" autocomplete="off" required></label>
+      <div class="wide actions"><button class="danger">Replace {{ prof.name }} with this backup</button><a class="btn quiet" href="/settings?tab=data">Cancel</a></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

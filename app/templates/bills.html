@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_macros.html" import bill_fields %}
+{% block title %}Bills · Payday{% endblock %}
+{% block content %}
+{% set p = prefill or {} %}
+{% set ns = namespace(paid=0, due=0, late=0) %}
+{% for b in bills if b.active %}{% for o in status[b.id] %}{% if o.txn or o.pending %}{% set ns.paid = ns.paid + 1 %}{% elif o.due < today %}{% set ns.late = ns.late + 1 %}{% else %}{% set ns.due = ns.due + 1 %}{% endif %}{% endfor %}{% endfor %}
+
+<div class="pagehead">
+  <div>
+    <h1>Bills</h1>
+    <p class="sub">This pay period, {{ start|short }} to {{ end|daybefore|short }}: {{ ns.paid }} paid, {{ ns.due }} still to come{% if ns.late %}, <span class="neg">{{ ns.late }} not seen yet</span>{% endif %}.</p>
+  </div>
+  <a class="btn admin-only" href="#add">Add a bill</a>
+</div>
+{% if bill_msg == 'bad' %}<p class="flash bad" role="alert">That bill couldn’t be saved. It needs a name, an amount above zero and some statement text. If the text starts with re: it must be a valid pattern.</p>{% endif %}
+
+<div class="panel flush">
+<table class="stack">
+  <thead><tr><th>Bill</th><th>This pay period</th><th class="num">Amount</th><th>How often</th><th>Statement text</th></tr></thead>
+  <tbody>
+  {% for b in bills %}
+  <tr class="{{ '' if b.active else 'muted' }}">
+    <td class="lead"><a href="/bills/{{ b.id }}">{{ b.name }}</a>{% if not b.active %} <span class="chip">paused</span>{% endif %}</td>
+    <td data-label="" data-sort="{{ status[b.id][0].due.isoformat() if status[b.id] else '9999' }}">
+      {% for o in status[b.id] %}
+        {% if o.txn %}<span class="chip paid">Paid {{ o.txn.date|short }}</span>
+        {% elif o.pending %}<span class="chip pend" title="{{ o.pending.description }}">Pending {{ o.pending.date|short }}</span>
+        {% elif o.due < today %}<span class="chip late">Not seen, due {{ o.due|short }}</span>
+        {% else %}<span class="chip due">Due {{ o.due|nice }}</span>{% endif %}
+      {% else %}<span class="muted">Not due</span>{% endfor %}</td>
+    <td class="num key" data-sort="{{ b.amount }}">{{ b.amount|money }}</td>
+    <td data-label="">{{ b.frequency|capitalize }}</td>
+    <td data-label="Matches"><code>{{ b.match_pattern }}</code></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="empty">No bills yet. Add rent, power, phone and subscriptions below{% if suggestions %}, or start with the suggestions{% endif %}.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if suggestions %}
+<section class="section" id="suggested">
+  <h2>Suggested bills</h2>
+  <div class="panel flush">
+  <table class="stack nosearch">
+    <thead><tr><th>Payee</th><th>How often</th><th class="num">Usually</th><th class="num">Payments</th><th>Next expected</th><th class="admin-only"></th></tr></thead>
+    <tbody>
+    {% for sg in suggestions %}
+    <tr><td class="lead"><a href="/payees/detail?name={{ sg.name|urlencode }}">{{ sg.name }}</a></td>
+        <td data-label="">{{ sg.frequency|capitalize }}</td>
+        <td class="num key" data-sort="{{ sg.amount }}">{{ sg.amount|money }}</td>
+        <td class="num">{{ sg.count }}</td>
+        <td class="nowrap" data-label="Next" data-sort="{{ sg.next.isoformat() }}">{{ sg.next|nice }}</td>
+        <td class="admin-only bare">
+          <div class="actions" style="flex-wrap:nowrap">
+            <a class="btn quiet small" href="/bills?from_txn={{ sg.txn_id }}#add">Add as bill</a>
+            <form method="post" action="/bills/suggestions/dismiss"><input type="hidden" name="name" value="{{ sg.name }}"><button class="linkish small">Dismiss</button></form>
+          </div>
+        </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <form class="admin-only" method="post" action="/bills/suggestions/reset" style="margin-top:.6rem"><button class="linkish small">Bring back dismissed suggestions</button></form>
+</section>
+{% endif %}
+
+<section class="section admin-only narrow" id="add">
+  <h2>{{ 'Make a bill from this transaction' if prefill else 'Add a bill' }}</h2>
+  <p class="lede">{% if prefill %}Check the details, then save. {% if p.seen > 1 %}{{ p.seen }} past payments match “{{ p.match_pattern }}”, so it looks {{ p.frequency }}.{% else %}Only one payment found so far, so how often it repeats is a guess.{% endif %}
+    {% else %}A payment is matched to a bill when its description contains the statement text and the amount and date are close. A bill that falls on a weekend is due the Monday after.{% endif %}</p>
+  <form method="post" action="/bills" class="panel">
+    <div class="fields">{{ bill_fields(p, cats, today) }}</div>
+    <div class="actions" style="margin-top:1rem"><button>{{ 'Save bill' if prefill else 'Add bill' }}</button></div>
+  </form>
+  <p class="muted small" style="margin-top:.75rem">Statement text ignores capitals. Start it with <code>re:</code> for a pattern, such as <code>re:spark|skinny</code>.</p>
+</section>
+{% endblock %}

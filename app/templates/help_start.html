@@ -1,0 +1,20 @@
+{% extends "public.html" %}
+{% block title %}Getting started · {{ info.business_name }}{% endblock %}
+{% block content %}
+<h1>Getting started</h1>
+<ol class="steps">
+  <li><strong>Create your household</strong> and confirm your email address. Then scan the code with an authenticator app and save your backup codes.</li>
+  <li><strong>Set your payday</strong> in Settings → Pay cycle.</li>
+  <li><strong>Connect your bank</strong>: see <a href="/help/bank">Connecting your bank</a>.</li>
+  <li><strong>Choose what counts</strong> in Settings → Accounts.</li>
+  <li><strong>Add your bills.</strong> They’re ticked off as they’re paid.</li>
+  <li><strong>Invite your household</strong> from Settings → People.</li>
+</ol>
+<h2>The numbers</h2>
+<ul>
+  <li><strong>A day until payday</strong>: this pay’s income, less every bill due before your next payday, less what you’ve spent so far, divided by the days left.</li>
+  <li><strong>Bills to come</strong>: bills due before payday with no matching payment yet.</li>
+  <li><strong>Transfers</strong> between your own accounts aren’t counted as spending or income.</li>
+</ul>
+<p><a href="/help/bank">Connecting your bank</a></p>
+{% endblock %}

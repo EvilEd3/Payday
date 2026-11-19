@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import category_options %}
+{% block title %}To review · Payday{% endblock %}
+{% block content %}
+{% set notes = {'always': 'Done. That payee will be filed the same way from now on.', 'filed': 'Done. Just these ones were changed.',
+                'accepted': 'Kept as they are.'} %}
+<p class="small"><a href="/transactions">Transactions</a></p>
+<div class="pagehead">
+  <div>
+    <h1>To review</h1>
+    <p class="sub">{% if count %}{{ count }} transaction{{ 's' if count != 1 }} from {{ groups|length }} payee{{ 's' if groups|length != 1 }}{% if new_count %}, {{ new_count }} new{% endif %}.{% else %}Nothing waiting.{% endif %}</p>
+  </div>
+  {% if count %}
+  <form method="post" action="/review/accept" data-confirm="Keep every category on this list as it is?">
+    <input type="hidden" name="everything" value="true"><button class="quiet">Keep them all as they are</button></form>
+  {% endif %}
+</div>
+{% if msg in notes %}<p class="flash" role="status">{{ notes[msg] }}</p>{% endif %}
+
+{% if not groups %}
+<div class="panel empty">
+  <p style="margin:0 0 .5rem"><strong>All caught up.</strong></p>
+  <p style="margin:0">New payees, and anything filed only by Akahu’s guess, appear here after each sync.</p>
+</div>
+{% else %}
+<p class="lede">Payday guessed these categories. Choose the right one, or keep the guess.</p>
+
+<div class="review">
+  {% for g in groups %}
+  <article class="panel rv" id="p-{{ g.key }}">
+    <header class="rv-head">
+      <div class="grow">
+        <h2>{{ g.name }} {% if g.new %}<span class="chip due">New payee</span>{% endif %}</h2>
+        <p class="muted small">{{ g.txns|length }} transaction{{ 's' if g.txns|length != 1 }}{% if g.txns|length > 1 %}, {{ g.first|short }} to {{ g.last|short }}{% else %}, {{ g.last|nice }}{% endif %}.
+          Filed as <strong>{{ g.guess }}</strong>.</p>
+      </div>
+      <span class="rv-total {{ 'pos' if g.total > 0 }}">{{ g.total|money(True) }}</span>
+    </header>
+
+    <form method="post" action="/review/file" class="rv-form">
+      <input type="hidden" name="payee" value="{{ g.name }}">
+      <label class="rv-cat">Category
+        <select name="category_id" aria-label="Category for {{ g.name }}">{{ category_options(cats, g.category_id) }}</select></label>
+      <div class="actions">
+        <button name="always" value="true">Every time</button>
+        <button class="quiet">Just these</button>
+      </div>
+    </form>
+    <form method="post" action="/review/accept" class="rv-keep">
+      <input type="hidden" name="payee" value="{{ g.name }}">
+      <button class="linkish small">{{ g.guess }} is right, keep it</button>
+    </form>
+
+    <details class="rv-list">
+      <summary class="small">Show {{ 'the transaction' if g.txns|length == 1 else 'all ' ~ g.txns|length }}</summary>
+      <ul>
+        {% for t in g.txns %}
+        <li><span>{{ t.date|nice }}</span><span class="grow">{{ t.description }}{% if t.account_id in accounts %}<span class="muted">, {{ accounts[t.account_id].name }}</span>{% endif %}</span>
+            <span class="num {{ 'pos' if t.amount > 0 }}">{{ t.amount|money(True) }}</span></li>
+        {% endfor %}
+      </ul>
+    </details>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

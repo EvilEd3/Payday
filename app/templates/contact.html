@@ -1,0 +1,14 @@
+{% extends "public.html" %}
+{% block title %}Contact · {{ info.business_name }}{% endblock %}
+{% block content %}
+<h1>Contact</h1>
+<dl class="contact">
+  {% if info.contact_email %}<div><dt>Email</dt><dd><a href="mailto:{{ info.contact_email }}">{{ info.contact_email }}</a></dd></div>{% endif %}
+  {% if info.phone %}<div><dt>Phone</dt><dd><a href="tel:{{ info.phone|replace(' ', '') }}">{{ info.phone }}</a></dd></div>{% endif %}
+  {% if info.address %}<div><dt>Post</dt><dd>{{ info.address }}</dd></div>{% endif %}
+  <div><dt>Business</dt><dd>{{ info.legal_name }}{% if info.nzbn %}, NZBN {{ info.nzbn }}{% endif %}</dd></div>
+  {% if info.privacy_email %}<div><dt>Privacy</dt><dd>{{ info.privacy_officer ~ ', ' if info.privacy_officer }}<a href="mailto:{{ info.privacy_email }}">{{ info.privacy_email }}</a></dd></div>{% endif %}
+  {% if info.security_email %}<div><dt>Security problems</dt><dd><a href="mailto:{{ info.security_email }}">{{ info.security_email }}</a></dd></div>{% endif %}
+</dl>
+<p>Forgotten your password? <a href="/forgot">Reset it here</a>. Lost your phone? Sign in with one of your backup codes.</p>
+{% endblock %}

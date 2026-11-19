@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% from "_macros.html" import period_nav %}
+{% block content %}
+{% set until = 'until the 1st' if d.calendar else 'until payday' %}{% set pay = 'this month' if d.calendar else 'this pay' %}
+{% set q = '&offset=' ~ d.offset if d.is_past else '' %}
+{% set rc = review_count() %}
+{% if rc and not d.is_past %}
+<a class="notice" href="/review">
+  <span><strong>{{ rc }} transaction{{ 's' if rc != 1 }} to review.</strong> Check the categories Payday had to guess.</span>
+  <span class="btn quiet small">Review</span>
+</a>
+{% endif %}
+
+{# ---------- the pay card: what's left of this pay, per day ---------- #}
+{% set base = [d.income, d.bills_total + d.day_to_day]|max %}
+<section class="paycard" aria-labelledby="headline">
+  <div class="pc-top">
+    {{ period_nav('/', d.offset, d.start, d.payday) }}
+    {% if not d.is_past %}<span class="pc-days">{{ d.days_left }} day{{ 's' if d.days_left != 1 }} {{ 'left this month' if d.calendar else 'to payday' }}</span>{% endif %}
+  </div>
+
+  {% if d.is_past %}
+    {% if d.income > 0 %}
+    <h1 id="headline" class="pc-figure">{{ d.budget_left|abs|money }}</h1>
+    <p class="pc-say">{{ ('left over from ' ~ pay) if d.budget_left >= 0 else ('overspent ' ~ pay) }}</p>
+    <p class="pc-note">You had {{ d.budget|money }} to spend after {{ d.bills_total|money }} of bills, and spent {{ d.day_to_day|money }} day to day:
+      {{ d.avg_per_day|money }} a day against {{ d.planned_per_day|money }} available.</p>
+    {% else %}
+    <h1 id="headline" class="pc-figure">{{ d.day_to_day|money }}</h1>
+    <p class="pc-say">spent day to day</p>
+    <p class="pc-note">No income was recorded in this pay period. It may be from before your first sync.</p>
+    {% endif %}
+  {% elif d.income <= 0 %}
+    <h1 id="headline" class="pc-figure">{{ d.per_day|money }}</h1>
+    <p class="pc-say">a day {{ until }}</p>
+    <p class="pc-note">No pay has landed this period yet, so this comes from your balances: {{ d.free|money }} free after {{ d.to_come|money }} of bills to come.</p>
+  {% elif d.budget_per_day >= 0 %}
+    <h1 id="headline" class="pc-figure">{{ d.budget_per_day|money }}</h1>
+    <p class="pc-say">{% if d.calendar %}a day for the rest of the month{% else %}a day until payday, {{ d.payday|long }}{% endif %}</p>
+    <p class="pc-note">{{ d.budget_left|money }} of this pay is left after bills and spending so far.
+      {% if d.pace >= 0 %}You’re {{ d.pace|money }} under pace.{% else %}You’re {{ (-d.pace)|money }} over pace.{% endif %}</p>
+  {% else %}
+    <h1 id="headline" class="pc-figure over">{{ (-d.budget_left)|money }}</h1>
+    <p class="pc-say">over {{ pay }}’s budget</p>
+    <p class="pc-note">Day-to-day spending has gone past what this pay left after bills. Payday is {{ d.payday|long }}.</p>
+  {% endif %}
+
+  {% if d.income > 0 %}
+  <div class="paybar" role="img" aria-label="This pay: {{ d.bills_paid|round|int }} dollars of bills paid, {{ d.to_come|round|int }} to come, {{ d.day_to_day|round|int }} spent, {{ [d.budget_left, 0]|max|round|int }} left">
+    {% for cls, v in [('pb-paid', d.bills_paid), ('pb-due', d.to_come), ('pb-spent', d.day_to_day), ('pb-left', [d.budget_left, 0]|max)] if v > 0 %}
+    <span class="{{ cls }}" style="flex-grow: {{ (v / base * 1000)|round|int }}"></span>
+    {% endfor %}
+  </div>
+  <dl class="paykey">
+    <div><dt><i class="pb-paid"></i>Bills paid</dt><dd>{{ d.bills_paid|money }}</dd></div>
+    <div><dt><i class="pb-due"></i>{{ 'Bills missed' if d.is_past else 'Bills to come' }}</dt><dd>{{ d.to_come|money }}</dd></div>
+    <div><dt><i class="pb-spent"></i>Spent</dt><dd>{{ d.day_to_day|money }}</dd></div>
+    <div><dt><i class="pb-left"></i>{{ 'Left over' if d.is_past else 'Left' }}</dt><dd>{{ d.budget_left|money }}</dd></div>
+  </dl>
+  {% endif %}
+</section>
+
+{% if not d.is_past %}
+<div class="runway" role="list" aria-label="Days {{ until }}">
+  {% for day in d.runway %}
+  <div role="listitem" class="day {% if loop.first %}today{% endif %} {% if day.date.weekday() >= 5 %}weekend{% endif %} {% if day.bills %}has-bill{% endif %}">
+    <span class="wd">{{ 'Today' if loop.first else day.date.strftime('%a') }}</span>
+    <span class="dn">{{ day.date.day }}</span>
+    {% for u in day.bills %}
+      <a href="/bills/{{ u.bill.id }}" class="bill {% if u.overdue %}overdue{% endif %}"><span>{{ u.bill.name }}</span>{{ u.bill.amount|money }}</a>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  <div role="listitem" class="day payday"><span class="wd">{{ 'New month' if d.calendar else 'Payday' }}</span><span class="dn">{{ d.payday.day }}</span></div>
+</div>
+{% endif %}
+
+<div class="ov-grid">
+  <div class="ov-col">
+  {# ---------- bills ---------- #}
+  <section class="block" id="bills">
+    <header><h2>Bills</h2><a class="small" href="/bills">All bills</a></header>
+    {% if not d.upcoming and not d.paid %}
+    <p class="muted empty-note">No bills due{% if not d.is_past %}. <a href="/bills">Add your recurring bills</a> to see what’s still to come{% endif %}.</p>
+    {% else %}
+    <ul class="billrows">
+      {% for u in d.upcoming %}
+      <li class="{{ 'late' if u.overdue else 'due' }}">
+        <span class="when"><b>{{ u.due.day }}</b>{{ u.due.strftime('%b') }}</span>
+        <a href="/bills/{{ u.bill.id }}" class="what">{{ u.bill.name }}<small>{{ ('No payment seen, was due ' ~ u.due|nice) if u.overdue else ('Due ' ~ u.due|nice) }}</small></a>
+        <span class="amt">{{ u.bill.amount|money }}</span>
+      </li>
+      {% endfor %}
+      {% for p in d.paid|reverse %}
+      <li class="{{ 'pend' if p.pending else 'paid' }}">
+        <span class="when"><b>{{ p.due.day }}</b>{{ p.due.strftime('%b') }}</span>
+        <a href="/bills/{{ p.bill.id }}" class="what">{{ p.bill.name }}<small>{{ 'Pending, ' if p.pending else 'Paid ' }}{{ p.txn.date|nice }}</small></a>
+        <span class="amt">{{ (-p.txn.amount)|money }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  </div>
+  <div class="ov-col">
+  {# ---------- this pay, worked out ---------- #}
+  <section class="block" id="budget">
+    <header><h2>{{ 'This month' if d.calendar else 'This pay' }}, worked out</h2></header>
+    {% if d.income > 0 or d.is_past %}
+    <table class="ledger nosort nosearch">
+      <tbody>
+      <tr><td><a href="/transactions?view=income{{ q }}">Income this period</a></td><td class="num pos">{{ d.income|money }}</td></tr>
+      <tr><td><a href="/transactions?view=bills{{ q }}">All bills this period</a></td><td class="num">−{{ d.bills_total|money }}</td></tr>
+      <tr class="total"><td>Spending money</td><td class="num">{{ d.budget|money }}</td></tr>
+      <tr><td><a href="/transactions?view=daytoday{{ q }}">Day-to-day spending{{ '' if d.is_past else ' so far' }}</a>
+        {% if d.pending_count %}<div class="muted small">includes {{ d.pending_total|money }} not settled yet</div>{% endif %}</td><td class="num">−{{ d.day_to_day|money }}</td></tr>
+      <tr class="total"><td>{{ 'Left over' if d.is_past else ('Left this month' if d.calendar else 'Left until payday') }}</td><td class="num {{ 'pos' if d.budget_left >= 0 else 'neg' }}">{{ d.budget_left|money }}</td></tr>
+      {% if not d.is_past %}
+      <tr><td>÷ Days left, including today</td><td class="num">{{ d.days_left }}</td></tr>
+      <tr class="total"><td>A day</td><td class="num {{ 'pos' if d.budget_per_day >= 0 else 'neg' }}">{{ d.budget_per_day|money }}</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+    <p class="muted small foot">Started at {{ d.planned_per_day|money }} a day over {{ d.period_days }} days. <a href="/summary{{ '?offset=' ~ d.offset if d.is_past else '' }}">More in Summary</a></p>
+    {% else %}
+    <p class="muted empty-note">This fills in once your pay lands and syncs. Until then the headline comes from your bank balances.</p>
+    {% endif %}
+  </section>
+
+  {# ---------- accounts ---------- #}
+  {% if not d.is_past %}
+  <section class="block" id="accounts">
+    <header><h2>Accounts</h2><a class="small admin-only" href="/settings?tab=accounts">Choose what counts</a></header>
+    <ul class="accrows">
+      {% for a in d.all_accounts %}
+      {% set bal = d.balances[a.id] %}
+      <li class="{{ '' if a.in_budget else 'off' }}">
+        <a href="/accounts/{{ a.id }}">{{ a.name }}<small>{{ a.institution }}{% if not a.in_budget %}{{ ', ' if a.institution }}not counted{% endif %}</small></a>
+        <span class="amt {{ 'neg' if bal < 0 }}">{{ bal|money }}</span>
+      </li>
+      {% else %}
+      <li class="muted">Accounts appear after your first sync.</li>
+      {% endfor %}
+    </ul>
+    {% if d.all_accounts %}<p class="foot split small"><span class="muted">Counted towards your budget</span> <strong class="m-right">{{ d.balance|money }}</strong></p>{% endif %}
+  </section>
+  {% endif %}
+  </div>
+  {# ---------- categories ---------- #}
+  {% if d.categories %}
+  <section class="block wide" id="categories">
+    <header><h2>Where it’s gone</h2><span class="muted small">{{ d.cat_total|money }} across {{ d.categories|length }} categor{{ 'ies' if d.categories|length != 1 else 'y' }}</span></header>
+    <ul class="catrows">
+      {% for cid, name, amt in d.categories %}
+      {% set lim = d.limits.get(cid) %}
+      {% set used = (amt / lim.limit) if lim else (amt / d.cat_max) %}
+      <li>
+        <a href="/transactions?category={{ cid }}{{ q }}" class="cname">{{ name }}<small>{{ (amt / d.cat_total * 100)|round|int }}%</small></a>
+        <div class="cbar {{ 'over' if lim and used > 1 else ('near' if lim and used >= 0.8 else '') }} {{ 'nolimit' if not lim }}"><span style="width: {{ [used * 100, 100]|min|round(1) }}%"></span></div>
+        <span class="amt">{{ amt|money }}</span>
+        {% if lim %}<span class="cnote">{{ (used * 100)|round|int }}% of {{ lim.limit|money }}{% if lim.mode == 'auto' %} usual{% endif %}{% if used > 1 %}, {{ (amt - lim.limit)|money }} over{% endif %}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+</div>
+
+<div class="statusline">
+  <span>{% if d.last_sync %}Synced {{ d.last_sync }}. {{ d.last_sync_status }}{% else %}Not synced with your bank yet.{% endif %}
+    <button type="button" class="linkish" data-sync-show>Details</button></span>
+  <form class="admin-only" method="post" action="/sync"><button class="quiet small" data-sync-start>Sync now</button></form>
+</div>
+<div id="sync-panel" class="panel sync-panel" hidden aria-live="polite">
+  <h3>Syncing with Akahu…</h3>
+  <ol class="sync-steps"></ol>
+  <p class="muted small sync-meta" style="margin:.75rem 0 0"></p>
+  <p style="margin:.75rem 0 0"><button type="button" class="small" data-sync-reload hidden>Show updated figures</button></p>
+</div>
+{% endblock %}

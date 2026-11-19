@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ d.name }} · Payday{% endblock %}
+{% block content %}
+<p class="small"><a href="/payees">All payees</a></p>
+<div class="pagehead">
+  <div>
+    <h1>{{ d.name }}</h1>
+    <p class="sub">{{ d.count }} transaction{{ 's' if d.count != 1 }}{% if d.first %} since {{ d.first.strftime('%-d %B %Y') }}{% endif %}</p>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><b>{{ d.this_period|money }}</b><span>This pay period</span></div>
+  <div class="kpi"><b>{{ d.spend_per_month|money }}</b><span>Average a month</span></div>
+  <div class="kpi"><b>{{ d.avg|money }}</b><span>Average a visit</span></div>
+  <div class="kpi"><b>{{ '%.1f'|format(d.per_month) }}</b><span>Visits a month</span></div>
+  <div class="kpi"><b>{{ d.total_out|money }}</b><span>Total spent</span></div>
+  {% if d.biggest %}<div class="kpi"><b>{{ (-d.biggest.amount)|money }}</b><span>Biggest, {{ d.biggest.date|nice }}</span></div>{% endif %}
+  {% if d.total_in %}<div class="kpi"><b class="pos">{{ d.total_in|money }}</b><span>Received in total</span></div>{% endif %}
+</div>
+
+<section class="section">
+  <h2>Spending by pay period</h2>
+  <div class="panel">{{ chart }}</div>
+</section>
+
+<section class="section">
+  <h2>Transactions</h2>
+  <div class="panel flush" style="margin-top:.75rem">
+  <table class="stack">
+    <thead><tr><th>Description</th><th>Date</th><th>Account</th><th>Category</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for t in d.txns %}
+    <tr><td class="lead">{{ t.description }}</td>
+        <td class="nowrap" data-label="" data-sort="{{ t.date.isoformat() }}">{{ t.date|nice }}</td>
+        <td data-label="">{{ accounts[t.account_id].name if t.account_id in accounts else '' }}</td>
+        <td data-label="">{{ cats[t.category_id].name if t.category_id in cats else '' }}</td>
+        <td class="num key {{ 'pos' if t.amount > 0 }}" data-sort="{{ t.amount }}">{{ t.amount|money(True) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small admin-only" style="margin-top:.75rem">To change the category for this payee, change one of its transactions on the <a href="/transactions?search={{ d.name|urlencode }}">Transactions page</a> and choose “Always do this”.</p>
+</section>
+{% endblock %}

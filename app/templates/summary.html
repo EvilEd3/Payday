@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_macros.html" import period_nav %}
+{% block title %}Summary · Payday{% endblock %}
+{% block content %}
+{% macro change_note(v, good_when_down=True) %}
+  {% if v is not none %}<span class="chg {{ ('pos' if v <= 0 else 'neg') if good_when_down else ('pos' if v >= 0 else 'neg') }}">{{ v|pct }} on the period before</span>{% endif %}
+{% endmacro %}
+{% macro legend(chart) %}
+<ul class="legend">{% for label, value, frac, colour, href in chart.legend %}
+  <li><i style="background: {{ colour }}"></i><span>{% if href %}<a href="{{ href }}">{{ label }}</a>{% else %}{{ label }}{% endif %}</span><span class="muted small">{{ (frac * 100)|round|int }}%</span><span class="num">{{ value|money }}</span></li>
+{% endfor %}</ul>
+{% endmacro %}
+
+<div class="pagehead">
+  <div>
+    <h1>Summary</h1>
+    <p class="sub">{% if c.offset == 0 %}Day {{ c.elapsed }} of {{ c.days }} in this pay period.{% else %}A pay period of {{ c.days }} days.{% endif %}</p>
+  </div>
+  {{ period_nav('/summary', c.offset, c.start, c.end) }}
+</div>
+
+<div class="kpis">
+  <a class="kpi" href="/transactions?view=income{{ o }}"><b class="pos">{{ c.income|money }}</b><span>Income</span>{{ change_note(chg.income, False) }}</a>
+  <a class="kpi" href="/transactions?view=spending{{ o }}"><b>{{ c.spent|money }}</b><span>Total spent</span>{{ change_note(chg.spent) }}</a>
+  <div class="kpi"><b class="{{ 'pos' if c.saved >= 0 else 'neg' }}">{{ c.saved|abs|money }}</b>
+    <span>{{ 'Kept' if c.saved >= 0 else 'Overspent' }}{% if c.rate is not none %}, {{ (c.rate|abs * 100)|round|int }}% of income{% endif %}</span></div>
+  <a class="kpi" href="/transactions?view=daytoday{{ o }}"><b>{{ c.per_day|money }}</b><span>Day-to-day spend a day</span>{{ change_note(chg.per_day) }}</a>
+  <a class="kpi" href="/{{ '?offset=' ~ c.offset if c.offset else '' }}#bills"><b>{{ c.bills|money }}</b><span>Bills paid, {{ dash.paid|length }} of {{ dash.paid|length + dash.upcoming|length }} due</span></a>
+  <div class="kpi"><b>{{ c.no_spend_days }}</b><span>No-spend day{{ 's' if c.no_spend_days != 1 }}</span></div>
+  {% if c.biggest %}<a class="kpi" href="/payees/detail?name={{ c.biggest_payee|urlencode }}"><b>{{ (-c.biggest.amount)|money }}</b><span>Biggest purchase, {{ c.biggest_payee }}</span></a>{% endif %}
+  {% if c.most_visited %}<a class="kpi" href="/payees/detail?name={{ c.most_visited.name|urlencode }}"><b>{{ c.most_visited.count }}×</b><span>Most visited, {{ c.most_visited.name }}</span></a>{% endif %}
+</div>
+
+<div class="grid2 section">
+  <section>
+    <h2>Spending by category</h2>
+    <div class="panel" style="margin-top:.75rem">{% if cat_chart.legend %}<div class="pie">{{ cat_chart.svg }}{{ legend(cat_chart) }}</div>{% else %}<p class="muted" style="margin:0">No spending yet this period.</p>{% endif %}</div>
+  </section>
+  <section>
+    <h2>Where your income went</h2>
+    <div class="panel" style="margin-top:.75rem">{% if where_chart.legend %}<div class="pie">{{ where_chart.svg }}{{ legend(where_chart) }}</div>{% else %}<p class="muted" style="margin:0">Nothing to show yet.</p>{% endif %}</div>
+  </section>
+</div>
+
+<section class="section">
+  <h2>Spending each day</h2>
+  <ul class="chartkey">
+    <li><span class="key-d2d" aria-hidden="true"></span> Day to day</li>
+    <li><span class="key-bills" aria-hidden="true"></span> Bills</li>
+    {% if day_rate is not none %}<li><span class="key-trend" aria-hidden="true"></span> Day rate: what you could spend each day, recalculated after each day’s spending.
+      {% if c.offset == 0 %}Now <strong class="{{ 'neg' if day_rate < 0 }}">{{ day_rate|money }}</strong> a day{% if day_rate < 0 %}; the line sits on the floor while you’re over budget{% endif %}.
+      {% else %}The period finished <strong class="{{ 'pos' if dash.budget_left >= 0 else 'neg' }}">{{ dash.budget_left|abs|money }} {{ 'under' if dash.budget_left >= 0 else 'over' }} budget</strong>.{% endif %}</li>{% endif %}
+    {% if dash.planned_per_day > 0 %}<li><span class="key-target" aria-hidden="true"></span> Where you started: {{ dash.planned_per_day|money }} a day.</li>{% endif %}
+    {% if c.pending_count %}<li><span class="key-pending" aria-hidden="true"></span> Not settled yet: {{ c.pending_total|money }}, shown on the day you made the purchase.</li>{% endif %}
+  </ul>
+  <div class="panel">{{ daily_chart }}</div>
+</section>
+
+{% if c.offset == 0 %}
+<section class="section">
+  <h2>Bank balance check</h2>
+  <div class="panel check">
+    <table class="ledger nosort nosearch"><tbody>
+      <tr><td>In budget accounts now</td><td class="num">{{ dash.balance|money }}</td></tr>
+      <tr><td>Bills still to come</td><td class="num due">−{{ dash.to_come|money }}</td></tr>
+      {% if dash.buffer %}<tr><td>Safety buffer</td><td class="num">−{{ dash.buffer|money }}</td></tr>{% endif %}
+      <tr class="total"><td>Free to spend</td><td class="num {{ 'pos' if dash.free >= 0 else 'neg' }}">{{ dash.free|money }}</td></tr>
+      <tr><td>÷ Days until payday, including today</td><td class="num">{{ dash.days_left }}</td></tr>
+      <tr class="total"><td>A day, by your bank balance</td><td class="num {{ 'pos' if dash.per_day >= 0 else 'neg' }}">{{ dash.per_day|money }}</td></tr>
+    </tbody></table>
+    {% if dash.income > 0 %}{% set gap = dash.free - dash.budget_left %}
+    <p class="muted small" style="margin:.75rem 0 0">
+      {% if gap|abs < 1 %}This matches your pay-period budget.
+      {% elif gap > 0 %}Your bank holds {{ gap|money }} more than this pay’s budget leaves, usually money left over from earlier pays.
+      {% else %}Your bank holds {{ (-gap)|money }} less than this pay’s budget leaves, usually money moved to savings or a bill paid from an account that isn’t counted.{% endif %}
+    </p>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+<div class="grid2 section">
+  <section>
+    <h2>Top payees</h2>
+    <div class="panel" style="margin-top:.75rem"><table class="nosearch">
+      <thead><tr><th>Payee</th><th class="num">Visits</th><th class="num">Spent</th></tr></thead>
+      <tbody>
+      {% for g in c.payees %}
+      <tr><td><a href="/payees/detail?name={{ g.name|urlencode }}">{{ g.name }}</a></td><td class="num">{{ g.count }}</td><td class="num">{{ g.out|money }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">No spending yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+  <section>
+    <h2>Categories against your limits</h2>
+    <div class="panel" style="margin-top:.75rem"><table class="nosearch">
+      <thead><tr><th>Category</th><th class="num">Spent</th><th class="num">Of limit</th><th class="num">Change</th></tr></thead>
+      <tbody>
+      {% for name, amt, cid in c.categories[:10] %}
+      {% set lim = limits.get(cid) %}
+      <tr><td><a href="/transactions?category={{ cid }}{{ o }}">{{ name }}</a></td><td class="num">{{ amt|money }}</td>
+          <td class="num" data-sort="{{ (amt / lim.limit) if lim else 0 }}">{% if lim %}<span class="{{ 'neg' if amt > lim.limit else ('due' if amt >= lim.limit * 0.8 else '') }}">{{ (amt / lim.limit * 100)|round|int }}%</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+          <td class="num">{% set v = cat_change[name] %}{% if v is none %}<span class="muted">new</span>{% else %}<span class="{{ 'pos' if v <= 0 else 'neg' }}">{{ v|pct }}</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="4" class="muted">No spending yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% set me = request.state.user %}
+{% set more_pages = ['payees', 'settings', 'mortgage', 'site'] %}
+{% set prof = request.state.profile %}{% set profs = request.state.profiles %}
+<!doctype html>
+{% set bc = browser_colour(me.theme if me else 'bush', me.mode if me else 'auto') %}
+<html lang="en-NZ" class="size-{{ me.text_size if me else 'normal' }}" data-theme="{{ me.theme if me else 'bush' }}" data-mode="{{ me.mode if me else 'auto' }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}Payday{% endblock %}</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+{% if bc.mode == 'auto' %}<meta name="theme-color" content="{{ bc.light }}" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="{{ bc.dark }}" media="(prefers-color-scheme: dark)">
+{% else %}<meta name="theme-color" content="{{ bc[bc.mode] }}">{% endif %}
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Payday">
+<link rel="preload" href="/static/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/theme.css?v={{ theme_version }}">
+<link rel="stylesheet" href="{{ asset('app.css') }}">
+<script src="{{ asset('app.js') }}" defer></script>
+</head>
+<body class="{{ 'private' if private() else '' }} {{ 'viewer' if me and me.role != 'admin' else '' }} page-{{ page or 'other' }}" data-sync-running="{{ '1' if sync_running() else '0' }}">
+{% macro privacy_button(cls='quiet small') %}
+<form method="post" action="/privacy"><button class="{{ cls }}" aria-pressed="{{ 'true' if private() else 'false' }}">{{ 'Show amounts' if private() else 'Hide amounts' }}</button></form>
+{% endmacro %}
+{% macro switcher(cls='') %}
+{% if profs|length > 1 %}
+<details class="switcher {{ cls }}">
+  <summary><span class="pname">{{ prof.name if prof else 'Choose a household' }}</span><svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+  <div class="menu">
+    {% for pid, pname, role in profs %}
+    <form method="post" action="/profiles/switch"><input type="hidden" name="profile_id" value="{{ pid }}">
+      <button class="{{ 'on' if prof and prof.id == pid }}">{{ pname }}<small>{{ 'Admin' if role == 'admin' else 'Read only' }}</small></button></form>
+    {% endfor %}
+  </div>
+</details>
+{% elif prof %}<span class="switcher single"><span class="pname">{{ prof.name }}</span></span>{% endif %}
+{% endmacro %}
+<header class="topbar">
+  <a class="brand" href="/"><img src="/static/icon-192.png" alt="" width="26" height="26"><span>Payday</span></a>
+  {% if me %}{{ switcher() }}{% endif %}
+  {% if me and prof %}
+  <nav class="nav" aria-label="Main">
+    <a href="/" {% if page=='home' %}aria-current="page"{% endif %}>Overview</a>
+    <a href="/summary" {% if page=='summary' %}aria-current="page"{% endif %}>Summary</a>
+    {% set rc = review_count() %}
+    <a href="/transactions" {% if page=='transactions' %}aria-current="page"{% endif %}>Transactions{% if rc %}<span class="badge" title="{{ rc }} to review">{{ rc }}</span>{% endif %}</a>
+    <a href="/payees" {% if page=='payees' %}aria-current="page"{% endif %}>Payees</a>
+    <a href="/bills" {% if page=='bills' %}aria-current="page"{% endif %}>Bills</a>
+    {% if has_loan() %}<a href="/mortgage" {% if page=='mortgage' %}aria-current="page"{% endif %}>Mortgage</a>{% endif %}
+    <a href="/settings" {% if page=='settings' %}aria-current="page"{% endif %}>Settings</a>
+  </nav>
+  {% endif %}
+  {% if me %}
+  <div class="who">
+    {% if prof %}{{ privacy_button() }}{% endif %}
+    <details class="usermenu">
+      <summary aria-label="Your account"><span class="avatar" aria-hidden="true">{{ me.username[:1]|upper }}</span></summary>
+      <div class="menu">
+        <div class="me">{{ me.username }}{% if prof %}<small>{{ 'Admin' if me.role == 'admin' else 'Read only' }} in {{ prof.name }}</small>{% endif %}</div>
+        <a href="/settings?tab=you">Your settings</a>
+        {% if me.is_owner %}<a href="/site" {% if page=='site' %}aria-current="page"{% endif %}>Households and sign-ins</a>{% endif %}
+        <form method="post" action="/logout"><button>Sign out</button></form>
+      </div>
+    </details>
+  </div>
+  {% endif %}
+</header>
+
+<main>{% block content %}{% endblock %}</main>
+<footer class="sitefoot"><nav aria-label="About"><a href="/help">Help</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/legal/security">Security</a><a href="/contact">Contact</a></nav></footer>
+
+{% if me and prof %}
+<nav class="tabbar" aria-label="Main">
+  <a href="/" {% if page=='home' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>Overview</a>
+  <a href="/summary" {% if page=='summary' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11"/><path d="M12 20V4"/><path d="M19 20v-6"/></svg>Summary</a>
+  <a href="/transactions" {% if page=='transactions' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7h11"/><path d="M9 12h11"/><path d="M9 17h11"/><path d="M4.5 7h.01"/><path d="M4.5 12h.01"/><path d="M4.5 17h.01"/></svg>Transactions{% if rc %}<span class="badge" aria-label="{{ rc }} to review">{{ rc }}</span>{% endif %}</a>
+  <a href="/bills" {% if page=='bills' %}aria-current="page"{% endif %}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9.5 8.5h5"/><path d="M9.5 12.5h5"/></svg>Bills</a>
+  <details class="sheetwrap {{ 'current' if page in more_pages }}">
+    <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01"/><path d="M12 12h.01"/><path d="M19 12h.01"/></svg>More</summary>
+    <div class="sheet">
+      <a href="/payees" {% if page=='payees' %}aria-current="page"{% endif %}>Payees</a>
+      {% if has_loan() %}<a href="/mortgage" {% if page=='mortgage' %}aria-current="page"{% endif %}>Mortgage</a>{% endif %}
+      <a href="/settings" {% if page=='settings' %}aria-current="page"{% endif %}>Settings</a>
+      {% if me.is_owner %}<a href="/site" {% if page=='site' %}aria-current="page"{% endif %}>Households and sign-ins</a>{% endif %}
+      <div class="me">Signed in as {{ me.username }}{% if prof %}, {{ 'admin' if me.role == 'admin' else 'read only' }} in {{ prof.name }}{% endif %}</div>
+      <form method="post" action="/logout"><button>Sign out</button></form>
+    </div>
+  </details>
+</nav>
+{% endif %}
+</body>
+</html>

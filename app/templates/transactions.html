@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "_macros.html" import period_nav, dots, category_options %}
+{% block title %}Transactions · Payday{% endblock %}
+{% block content %}
+{% set qs = (('&category=' ~ category.id) if category else '') ~ (('&view=' ~ view) if view else '') ~ (('&payee=' ~ payee|urlencode) if payee else '') %}
+{% set back = here(request) %}
+{% set filtered = category or view or day or payee or all_time %}
+{% set why = {'manual': 'Set by you', 'rule': 'Your rule', 'user': 'Your rule', 'learned': 'Learned from you'} %}
+
+<div class="pagehead">
+  <div>
+    <h1>{% if search %}Search: “{{ search }}”{% elif tag %}Tagged #{{ tag }}{% elif category %}{{ category.name }}{% elif payee %}{{ payee }}{% elif view_title %}{{ view_title }}{% else %}Transactions{% endif %}</h1>
+    {% if filtered %}<p class="sub">{{ found }} transaction{{ 's' if found != 1 }}, {{ total|money(True) }} in total{% if all_time %}, all time{% elif day %}, {{ day|long }}{% endif %}.
+      <a href="/transactions{{ '?offset=' ~ offset if offset and not all_time else '' }}">Show everything</a></p>{% endif %}
+  </div>
+  {% if not all_time %}{{ period_nav('/transactions', offset, start, end, qs) }}{% endif %}
+</div>
+
+{% set rc = review_count() %}
+{% if rc %}<a class="notice" href="/review" style="text-decoration:none"><span><strong>{{ rc }} to review.</strong> Categories Payday had to guess.</span><span class="btn quiet small">Review</span></a>{% endif %}
+<form method="get" action="/transactions" class="searchbar" role="search">
+  <input type="search" name="search" value="{{ search }}" placeholder="Search all time: payee, note, tag or amount" aria-label="Search all transactions">
+  <button class="quiet">Search</button>
+</form>
+
+{% if view == 'transfers' %}
+<div class="lede small" style="margin-bottom:.75rem">Money moved between your own accounts. It’s left out of income and spending.
+  <form class="admin-only" method="post" action="/transfers/recheck" style="display:inline"><button class="linkish">Check for more transfers</button></form></div>
+{% elif view == 'daytoday' %}
+{% endif %}
+
+{% if pending %}
+<details class="fold" id="pending" style="margin-bottom:.75rem">
+  <summary><h2>Pending</h2>
+    <span class="sum"><span><small>{{ pending|length }} not settled yet</small>{{ pending|sum(attribute='amount')|money(True) }}</span></span></summary>
+  <div class="body">
+    <table class="ledger nosort nosearch"><tbody>
+      {% for p in pending %}
+      <tr><td>{{ p.description }}<div class="muted small">{{ p.date|nice }}{% if p.account_id in accounts %}, {{ accounts[p.account_id].name }}{% endif %}</div></td>
+          <td class="num {{ 'pos' if p.amount > 0 }}">{{ p.amount|money(True) }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
+</details>
+{% endif %}
+
+<div class="panel flush">
+<table class="txns nosearch">
+  <thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th class="num">Amount</th><th class="admin-only"></th></tr></thead>
+  <tbody>
+  {% for t in txns %}
+  {% set acc = accounts.get(t.account_id) %}
+  {% set partner = partners.get(t.transfer_id) if t.transfer_id else none %}
+  {% set bill = bills.get(t.bill_id) if t.bill_id else none %}
+  <tr id="t-{{ t.id }}" {% if changed == t.id %}class="changed"{% endif %}>
+    <td class="c-date nowrap" data-sort="{{ t.date.isoformat() }}">{{ t.date|nice }}</td>
+    <td class="c-desc">
+      <div class="payee">{{ t.merchant or t.description }}</div>
+      {% if t.merchant and t.merchant|lower != t.description|lower %}<div class="sub">{{ t.description }}</div>{% endif %}
+      {% if t.note %}<div class="note">{{ t.note }}</div>{% endif %}
+      <div class="marks">{% if bill %}<a class="chip paid" href="/bills/{{ bill.id }}">{{ bill.name }} bill{% if t.bill_due_date %}, due {{ t.bill_due_date|short }}{% endif %}</a>{% endif %}{% if partner and accounts.get(partner.account_id) %}<span class="chip">{{ 'To ' if t.amount < 0 else 'From ' }}{{ accounts[partner.account_id].name }}</span>{% endif %}{% for tg in t.tags.split(',') if tg.strip() %}<a class="chip" href="/transactions?tag={{ tg.strip()|urlencode }}">#{{ tg.strip() }}</a>{% endfor %}</div>
+    </td>
+    <td class="c-acct">{% if acc %}<a href="/accounts/{{ acc.id }}">{{ acc.name }}</a>{% endif %}{% if acc and acc.institution %}<div class="sub">{{ acc.institution }}</div>{% endif %}</td>
+    <td class="c-cat">
+      <span class="viewer-only">{{ cat_map[t.category_id].name if t.category_id in cat_map else '' }}</span>
+      <form class="admin-only" method="post" action="/transactions/{{ t.id }}/category">
+        <input type="hidden" name="next" value="{{ back }}">
+        <select name="category_id" data-autosubmit aria-label="Category for {{ t.merchant or t.description }}">{{ category_options(cats, t.category_id) }}</select>
+      </form>
+      {% if changed == t.id and t.category_source == 'manual' and t.category_id in cat_map %}
+      <form class="always admin-only" method="post" action="/transactions/{{ t.id }}/remember">
+        <input type="hidden" name="next" value="{{ back }}">
+        <span>File everything from “{{ (t.merchant or t.description)|truncate(40, True) }}” as {{ cat_map[t.category_id].name }}?</span>
+        <button class="small">Always do this</button>
+      </form>
+      {% elif t.category_source in ('akahu', 'default') and not t.reviewed and not t.transfer_id and not t.bill_id %}<div class="why"><a href="/review">A guess. Review it</a></div>
+      {% elif why.get(t.category_source) %}<div class="why">{{ why[t.category_source] }}</div>{% endif %}
+    </td>
+    <td class="c-amt num {{ 'pos' if t.amount > 0 }}" data-sort="{{ t.amount }}">{{ t.amount|money(True) }}</td>
+    <td class="c-more admin-only">
+      <details class="more">
+        <summary aria-label="More for {{ t.merchant or t.description }}" title="Note, tags and bill">{{ dots() }}</summary>
+        <div class="pop">
+          <form method="post" action="/transactions/{{ t.id }}/note">
+            <input type="hidden" name="next" value="{{ back }}">
+            <label>Note <input name="note" value="{{ t.note }}" maxlength="500" placeholder="What was this for?"></label>
+            <label>Tags <input name="tags" value="{{ t.tags }}" placeholder="holiday, work expense" autocapitalize="none"></label>
+            <div><button class="small">Save note and tags</button></div>
+          </form>
+          {% if bill %}
+          <hr>
+          <form method="post" action="/transactions/{{ t.id }}/bill">
+            <input type="hidden" name="next" value="{{ back }}"><input type="hidden" name="bill_id" value="">
+            <span class="small">Counted as paying the {{ bill.name }} bill.</span>
+            <div><button class="quiet small">Not this bill</button></div>
+          </form>
+          {% elif t.amount < 0 %}
+          <hr>
+          <form method="post" action="/transactions/{{ t.id }}/bill">
+            <input type="hidden" name="next" value="{{ back }}">
+            {% if bills %}<label>This paid a bill
+              <select name="bill_id" data-autosubmit>
+                <option value="">Choose a bill</option>
+                {% for b in bills.values()|sort(attribute='name') if b.active %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+              </select></label>{% endif %}
+            <a class="small" href="/bills?from_txn={{ t.id }}#add">Make this a new recurring bill</a>
+          </form>
+          {% endif %}
+          {% if t.category_source == 'manual' %}
+          <hr>
+          <form method="post" action="/transactions/{{ t.id }}/reset">
+            <input type="hidden" name="next" value="{{ back }}">
+            <div><button class="quiet small">Go back to the automatic category</button></div>
+          </form>
+          {% endif %}
+        </div>
+      </details>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6" class="empty">{{ 'Nothing matches that.' if filtered else 'No transactions in this pay period yet.' }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if found > txns|length %}<p class="muted small" style="margin-top:.75rem">Showing the latest {{ txns|length }} of {{ found }}. Narrow the search to see older ones.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+{% from "_macros.html" import category_options, rule_fields %}
+{% block title %}Settings · Payday{% endblock %}
+{% block content %}
+{% set me = request.state.user %}
+{% set notes = {'saved': 'Saved.', 'deleted': 'Removed.', 'pw': 'Password changed. Your other devices have been signed out.',
+  'renamed': 'Renamed.', 'merged': 'Merged.', 'invited': 'Invite link made.',
+  'restored': 'Restored from the backup. Connect your bank again under Bank connection.', 'tokens': 'Saved.',
+  'tested': 'Connection works.', 'forgot': 'Bank disconnected.', 'connected': 'Bank connected. The first sync has started.',
+  'emailsent': 'We’ve sent a link to your new email address. Open it to confirm.'} %}
+{% set problems = {
+  'badpw': 'That password isn’t right.',
+  'weakpw': 'Choose a stronger new password: at least 10 characters, not a common one, and not containing your username.',
+  'exists': 'There’s already a category with that name.', 'builtin': 'Built-in categories can’t be renamed or merged away.',
+  'inuse': 'That category is still used. Merge it into another instead.',
+  'lastadmin': 'A household must always have an admin. Make someone else admin first.',
+  'lastowner': 'Make someone else site owner before deleting your account.',
+  'badcode': 'Your password or code wasn’t right.', 'bademail': 'Enter a valid email address that isn’t used by another account.',
+  'badrule': 'A rule needs at least one condition and a category. If the text starts with re: it must be a valid pattern.',
+  'opening': 'An opening balance needs both an amount and a date.',
+  'anchor': 'For weekly or fortnightly pay, give the date of one payday.',
+  'badname': 'That name can’t be used. Usernames are 3 to 40 letters, numbers, dots, dashes or underscores, and can’t already be taken.',
+  'notokens': 'Paste at least one token to save.', 'badtokens': 'Those tokens didn’t work, so they weren’t saved.',
+  'testfail': 'The connection didn’t work.', 'owneronly': 'Only the site owner can use personal app tokens.',
+  'noconnect': 'Bank connections aren’t open yet.', 'cancelled': 'Connecting was cancelled. Nothing changed.',
+  'badstate': 'That connection attempt expired or didn’t match. Start again.'} %}
+
+<div class="pagehead"><h1>Settings</h1></div>
+{% if tabs|length > 1 %}
+<nav class="tabs" aria-label="Settings sections">
+  {% for key, label in tabs %}<a href="/settings?tab={{ key }}" {% if key == tab %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+{% endif %}
+{% if msg in notes %}<p class="flash" role="status">{{ notes[msg] }}{% if test %} {{ test }}{% endif %}</p>{% elif msg in problems %}<p class="flash bad" role="alert">{{ problems[msg] }}{% if test %} {{ test }}{% endif %}</p>{% endif %}
+
+{# ------------------------------------------------------------------ pay cycle #}
+{% if tab == 'pay' %}
+<div class="narrow">
+  <form method="post" action="/profile/rename" class="panel fields" style="margin-bottom:1rem">
+    <label class="wide">Household name <input name="name" value="{{ request.state.profile.name }}" maxlength="60" required></label>
+    <div class="wide"><button class="quiet">Save name</button></div>
+  </form>
+  <p class="lede">This {{ 'month' if pay_frequency == 'calendar' else 'pay period' }} runs {{ period[0]|nice }} to {{ period[1]|daybefore|nice }}.{% if pay_frequency != 'calendar' %} Next payday is {{ period[1]|long }}.{% endif %}</p>
+  <form method="post" action="/settings" class="panel fields" data-cycle>
+    <label class="wide">How often you’re paid
+      <select name="pay_frequency" data-cycle-pick>
+        <option value="monthly" {% if pay_frequency == 'monthly' %}selected{% endif %}>Monthly, on a set day</option>
+        <option value="fortnightly" {% if pay_frequency == 'fortnightly' %}selected{% endif %}>Fortnightly</option>
+        <option value="weekly" {% if pay_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+        <option value="calendar" {% if pay_frequency == 'calendar' %}selected{% endif %}>Budget by calendar month (1st to month end)</option>
+      </select></label>
+    <label data-for="monthly">Payday, day of the month <input name="payday_day" type="number" min="1" max="31" inputmode="numeric" value="{{ payday_day }}"></label>
+    <label data-for="weekly fortnightly">A recent or upcoming payday <input name="pay_anchor" type="date" value="{{ pay_anchor }}"></label>
+    <label data-for="monthly weekly fortnightly">If payday lands on a weekend
+      <select name="payday_adjust">
+        <option value="previous_business_day" {% if payday_adjust=='previous_business_day' %}selected{% endif %}>Paid the Friday before</option>
+        <option value="next_business_day" {% if payday_adjust=='next_business_day' %}selected{% endif %}>Paid the Monday after</option>
+        <option value="none" {% if payday_adjust=='none' %}selected{% endif %}>Paid on the day</option>
+      </select></label>
+    <label>Safety buffer ($) <input class="amt-in" name="buffer" inputmode="decimal" value="{{ buffer }}"></label>
+    <label>Daily sync, hour of the day (0 to 23) <input name="sync_hour" type="number" min="0" max="23" inputmode="numeric" value="{{ sync_hour }}"></label>
+    <div class="wide"><button>Save pay cycle</button></div>
+  </form>
+</div>
+
+{# ------------------------------------------------------------------ bank connection #}
+{% elif tab == 'bank' %}
+{% set via = tokens_via %}
+<div class="narrow">
+  <div class="panel bankstate">
+    {% if token_mask.user %}
+    <p class="big"><strong>{{ 'Connected with Akahu' if via == 'connect' else 'Connected with a personal app' }}</strong></p>
+    {% if akahu_test %}<p class="muted small">{{ akahu_test }}</p>{% endif %}
+    <div class="actions">
+      <form method="post" action="/settings/akahu/test"><button class="quiet small">Test the connection</button></form>
+      <form method="post" action="/bank/disconnect" data-confirm="Disconnect your bank? Payday stops syncing; what’s already here stays."><button class="danger small">Disconnect</button></form>
+    </div>
+    {% else %}
+    <p class="big"><strong>No bank connected</strong></p>
+    {% endif %}
+    {% if site_info().connect %}
+    <form method="post" action="/bank/connect" style="margin-top:1rem"><button>{{ 'Connect again, or add accounts' if token_mask.user else 'Connect your bank' }}</button></form>
+    {% elif not token_mask.user %}
+    <p class="muted small">Bank connections for new households aren’t open yet.</p>
+    {% endif %}
+    <p class="small" style="margin:.9rem 0 0"><a href="/help/bank">How connecting works</a></p>
+  </div>
+
+  {% if me.is_owner %}
+  <section class="section">
+    <h2>Personal app tokens</h2>
+    <form method="post" action="/settings/akahu" class="panel" style="margin-top:.75rem" autocomplete="off">
+      <div class="fields">
+        <label>App ID token <input name="app_token" type="password" autocomplete="off" spellcheck="false" placeholder="{{ 'Ending ' ~ token_mask.app if token_mask.app and via != 'connect' else 'app_token_…' }}"></label>
+        <label>User access token <input name="user_token" type="password" autocomplete="off" spellcheck="false" placeholder="{{ 'Ending ' ~ token_mask.user if token_mask.user and via != 'connect' else 'user_token_…' }}"></label>
+      </div>
+      <div class="actions" style="margin-top:.9rem"><button class="quiet">Save and test</button></div>
+    </form>
+    {% if token_source.app in ('env', 'file') or token_source.user in ('env', 'file') %}
+    <p class="flash bad" style="margin-top:.75rem">These tokens are read from stack.env. Save them here, then delete the AKAHU_ lines from stack.env.</p>{% endif %}
+  </section>
+  {% endif %}
+</div>
+
+{% elif tab == 'accounts' %}
+<p class="lede"><strong>Balance counts</strong>: its balance is money you can spend. <strong>Budget counts</strong>: its income and spending are part of your budget.</p>
+{% if accounts|selectattr('type', 'equalto', 'LOAN')|list or has_loan() %}<a class="notice" href="{{ '/mortgage' if has_loan() else '/mortgage/setup' }}" style="text-decoration:none"><span><strong>{{ 'Your mortgage' if has_loan() else 'Got a mortgage?' }}</strong> {{ 'Balance, forecasts and what-ifs.' if has_loan() else 'Set it up to see the balance, forecasts, equity and what-ifs, and load your repayments so far.' }}</span><span class="btn quiet small">{{ 'Open' if has_loan() else 'Set up' }}</span></a>{% endif %}
+<div class="list">
+  {% for a in accounts %}
+  <form method="post" action="/accounts/{{ a.id }}" class="row" style="align-items:flex-start">
+    <div class="grow">
+      <div class="title"><a href="/accounts/{{ a.id }}">{{ a.name }}</a></div>
+      <div class="muted small">{% if a.nickname and a.bank_name and a.bank_name != a.nickname %}{{ a.bank_name }}, {% endif %}{{ a.institution }}{{ ', ' if a.institution and a.type }}{{ a.type|acctype }}</div>
+      <div style="margin-top:.35rem"><span class="acct-bal {{ 'neg' if balances[a.id] < 0 }}">{{ balances[a.id]|money }}</span>
+        <span class="muted small">{% if a.opening_balance is not none %}from your opening balance. The bank says {{ bank[a.id]|money }}{% elif a.type in ('CREDITCARD', 'LOAN') %}owed, from the bank{% else %}from the bank{% if a.balance_limit and a.balance_available is not none and a.balance_available > a.balance_current %}, not counting your {{ a.balance_limit|money }} overdraft{% endif %}{% endif %}</span></div>
+    </div>
+    <div class="grow" style="flex-basis:20rem">
+      <label style="margin-bottom:.4rem">Nickname <input name="nickname" value="{{ a.nickname }}" maxlength="60" placeholder="{{ a.bank_name or a.name }}"></label>
+      <div class="actions" style="gap:0 1.25rem">
+        <label class="check"><input type="checkbox" name="in_budget" value="true" {% if a.in_budget %}checked{% endif %}> Balance counts</label>
+        <label class="check"><input type="checkbox" name="count_spending" value="true" {% if a.count_spending %}checked{% endif %}> Budget counts</label>
+      </div>
+      <details style="margin:.25rem 0 .6rem" {% if a.opening_balance is not none %}open{% endif %}>
+        <summary class="muted small" style="cursor:pointer">Use my own opening balance</summary>
+        <div class="fields" style="margin-top:.6rem">
+          <label>Opening balance ($) <input class="amt-in" name="opening_balance" inputmode="decimal" placeholder="Use the bank’s balance"
+                 value="{{ '%.2f'|format(a.opening_balance) if a.opening_balance is not none else '' }}"></label>
+          <label>At the start of <input name="opening_date" type="date" value="{{ a.opening_date.isoformat() if a.opening_date else '' }}"></label>
+        </div>
+      </details>
+      <button class="quiet small">Save {{ a.name }}</button>
+    </div>
+  </form>
+  {% else %}
+  <p class="empty">Accounts appear after your first sync.</p>
+  {% endfor %}
+</div>
+
+{# ------------------------------------------------------------------ category limits #}
+{% elif tab == 'limits' %}
+<div class="list">
+  {% for c in cats %}
+  {% set lim = limits.get(c.id) %}
+  <div class="row" data-search="{{ c.name }}">
+    <div class="grow">
+      <div class="title">{{ c.name }}</div>
+      <div class="muted small">{% if averages.get(c.id) %}Averages {{ averages[c.id]|money }} a pay period{% else %}No spending in the last 3 pay periods{% endif %}</div>
+    </div>
+    <form class="inline" method="post" action="/categories/{{ c.id }}/limit">
+      <select name="limit_mode" data-limit-mode aria-label="Limit for {{ c.name }}">
+        <option value="auto" {% if c.limit_mode == 'auto' %}selected{% endif %}>Average{% if averages.get(c.id) and not private() %} (${{ '%.0f'|format(averages[c.id]) }}){% endif %}</option>
+        <option value="fixed" {% if c.limit_mode == 'fixed' %}selected{% endif %}>Fixed amount</option>
+        <option value="off" {% if c.limit_mode == 'off' %}selected{% endif %}>No limit</option>
+      </select>
+      <input class="amt-in" name="limit_amount" data-limit-amount inputmode="decimal" placeholder="$ a pay period"
+             value="{{ '%.2f'|format(c.limit_amount) if c.limit_amount else '' }}" aria-label="Fixed amount for {{ c.name }}">
+      <button class="quiet small">Save</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="empty">Categories appear after your first sync.</p>
+  {% endfor %}
+</div>
+
+{# ------------------------------------------------------------------ rules #}
+{% elif tab == 'rules' %}
+
+<details class="fold" id="new-rule">
+  <summary><h2>New rule</h2><span class="sum muted small" style="font-weight:400">Text, direction, amount or account</span></summary>
+  <div class="body">
+    <form method="post" action="/rules">
+      <div class="fields">
+        {{ rule_fields(none, accounts) }}
+        <label>File as
+          <select name="category_id">{{ category_options(cats, none) }}</select></label>
+        <label>…or a new category <input name="new_category" maxlength="60" placeholder="Groceries"></label>
+        <label>New category is
+          <select name="kind"><option value="expense">Spending</option><option value="income">Income</option><option value="transfer">A transfer (not counted)</option></select></label>
+      </div>
+      <p class="muted small" style="margin:.75rem 0">Fill in only the conditions you need; all of them must match. Start the text with <code>re:</code> for a pattern, such as <code>re:spark|skinny</code>.</p>
+      <div class="actions"><button>Add rule</button><button class="quiet" formaction="/rules/preview" formmethod="get">Preview matches</button></div>
+    </form>
+  </div>
+</details>
+
+<div class="table-tools" style="margin-top:1.5rem">
+  <input type="search" data-filter="#your-rules, #learned-rules" placeholder="Filter rules by text or category" aria-label="Filter rules">
+  <span class="count" aria-live="polite"></span>
+</div>
+
+{% macro rule_row(r) %}
+<details class="rule" data-search="{{ r.pattern }} {{ cat_names.get(r.category_id, '') }} {{ account_map[r.account_id].name if r.account_id in account_map else '' }}">
+  <summary>
+    <span class="when">{{ describe_rule(r, account_map) }}</span>
+    <span class="chip">{{ cat_names.get(r.category_id, 'Category removed') }}</span>
+    <span class="edit">Edit</span>
+  </summary>
+  <div class="body">
+    <form id="rule-{{ r.id }}" method="post" action="/rules/{{ r.id }}">
+      <input type="hidden" name="rule_id" value="{{ r.id }}">
+      <div class="fields">
+        {{ rule_fields(r, accounts) }}
+        <label>File as <select name="category_id">{{ category_options(cats, r.category_id) }}</select></label>
+      </div>
+    </form>
+    <div class="actions">
+      <button form="rule-{{ r.id }}" class="small">Save rule</button>
+      <button form="rule-{{ r.id }}" class="quiet small" formaction="/rules/preview" formmethod="get">Preview matches</button>
+      <form method="post" action="/rules/{{ r.id }}/delete" data-confirm="Delete this rule? Transactions it filed will be sorted again without it." style="margin-left:auto">
+        <button class="danger small">Delete</button></form>
+    </div>
+  </div>
+</details>
+{% endmacro %}
+
+<div class="listhead"><h2>Your rules <small data-count-for="#your-rules">{{ your_rules|length }}</small></h2></div>
+{% if your_rules %}
+<div class="list" id="your-rules">{% for r in your_rules %}{{ rule_row(r) }}{% endfor %}</div>
+{% else %}
+<p class="panel muted">No rules of your own yet. Add one above, or change a category on the Transactions page and choose “Always do this”.</p>
+{% endif %}
+
+{% if learned_rules %}
+<details class="fold" id="learned" style="margin-top:1.25rem" {% if learned_rules|length <= 8 %}open{% endif %}>
+  <summary><h2>Learned from your changes</h2><span class="sum"><span data-count-for="#learned-rules">{{ learned_rules|length }}</span></span></summary>
+  <div class="list" id="learned-rules" style="border:0; border-top:1px solid var(--line); border-radius:0 0 var(--r-panel) var(--r-panel)">{% for r in learned_rules %}{{ rule_row(r) }}{% endfor %}</div>
+</details>
+{% endif %}
+
+{# ------------------------------------------------------------------ categories #}
+{% elif tab == 'categories' %}
+{% set cat_into = request.query_params.get('into', '') %}{% set cat_from = request.query_params.get('cat', '') %}
+{% if msg == 'exists' and cat_from %}
+{% set cf = cats|selectattr('id', 'equalto', cat_from|int)|first %}{% set ci = cats|selectattr('id', 'equalto', cat_into|int)|first %}
+{% if cf and ci %}
+<div class="notice" role="alert"><span><strong>“{{ ci.name }}” already exists.</strong> Merge {{ cf.name }} into it? Its {{ used.get(cf.id, 0) }} transactions, rules and bills move to {{ ci.name }}, and {{ cf.name }} is removed.</span>
+  <form method="post" action="/categories/{{ cf.id }}/rename"><input type="hidden" name="name" value="{{ ci.name }}"><input type="hidden" name="merge" value="true"><button class="small">Merge</button></form></div>
+{% endif %}
+{% endif %}
+<div class="list" data-filter-list>
+  {% for c in cats %}
+  {% set builtin = c.name in ('Income', 'Transfer', 'Uncategorised', 'Bills') %}
+  <div class="row">
+    <div class="grow"><span class="title">{{ c.name }}</span>
+      <div class="muted small">{{ {'expense': 'Spending', 'income': 'Income', 'transfer': 'Transfer'}.get(c.kind, c.kind) }} · {{ used.get(c.id, 0) }} transaction{{ 's' if used.get(c.id, 0) != 1 }}{% if builtin %} · built in{% endif %}</div></div>
+    {% if not builtin %}
+    <form class="inline" method="post" action="/categories/{{ c.id }}/rename">
+      <input name="name" value="{{ c.name }}" maxlength="60" aria-label="New name for {{ c.name }}" required>
+      <button class="quiet small">Rename</button>
+    </form>
+    {% if not used.get(c.id) %}<form method="post" action="/categories/{{ c.id }}/delete" data-confirm="Delete the {{ c.name }} category?"><button class="danger small">Delete</button></form>{% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+<div class="section narrow">
+  <h2>Add a category</h2>
+  <form method="post" action="/categories" class="panel fields">
+    <label>Name <input name="name" maxlength="60" required></label>
+    <label>Kind <select name="kind"><option value="expense">Spending</option><option value="income">Income</option><option value="transfer">Transfer</option></select></label>
+    <div class="wide"><button>Add category</button></div>
+  </form>
+</div>
+
+{# ------------------------------------------------------------------ people #}
+{% elif tab == 'members' %}
+{% set prof = request.state.profile %}
+{% if link %}
+<div class="panel invite-link" role="status">
+  <strong>Invite link, works once, for 7 days</strong>
+  <p class="muted small">Send it to the person yourself (message or email). Anyone with the link can join, so don’t post it publicly.</p>
+  <div class="copyrow"><input readonly value="{{ link }}" aria-label="Invite link" data-select-all><button type="button" class="quiet" data-copy="{{ link }}">Copy</button></div>
+</div>
+{% endif %}
+<div class="list">
+  {% for m, name, has2fa in members %}
+  <div class="row">
+    <div class="grow"><span class="title">{{ name }}</span>{% if m.user_id == me.id %} <span class="chip">you</span>{% endif %}
+      <div class="muted small">{{ 'Admin' if m.role == 'admin' else 'Read only' }}{% if not has2fa %} · hasn’t finished setting up{% endif %}</div></div>
+    {% if m.user_id != me.id %}
+    <form class="inline" method="post" action="/members/{{ m.id }}">
+      <select name="role" aria-label="Role for {{ name }}" data-autosubmit>
+        <option value="admin" {% if m.role == 'admin' %}selected{% endif %}>Admin</option>
+        <option value="viewer" {% if m.role != 'admin' %}selected{% endif %}>Read only</option>
+      </select>
+      <noscript><button class="quiet small">Save</button></noscript>
+    </form>
+    <form method="post" action="/members/{{ m.id }}/delete" data-confirm="Remove {{ name }} from {{ prof.name }}?"><button class="danger small">Remove</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+<div class="grid2 section">
+<section>
+  <h2>Invite someone</h2>
+  <form method="post" action="/members/invite" class="panel fields" style="margin-top:.75rem">
+    <label>Who it’s for <input name="note" maxlength="60" placeholder="e.g. Sarah"></label>
+    <label>They can <select name="role"><option value="viewer">Look only (read only)</option><option value="admin">Change everything (admin)</option></select></label>
+    <div class="wide"><button>Make an invite link</button></div>
+  </form>
+  {% if invites %}
+  <div class="list" style="margin-top:.75rem">
+    {% for i in invites %}
+    <div class="row"><div class="grow"><span class="title">{{ i.note or 'Invite' }}</span>
+      <div class="muted small">{{ 'Admin' if i.role == 'admin' else 'Read only' }} · expires {{ i.expires_at|dmy }}</div></div>
+      <form method="post" action="/members/invites/{{ i.id }}/delete"><button class="quiet small">Cancel</button></form></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+<section>
+  <h2>Leave</h2>
+  <form method="post" action="/profiles/leave" class="panel actions" style="margin-top:.75rem; justify-content:space-between" data-confirm="Leave {{ prof.name }}? You’ll need a new invite to come back.">
+    <p style="margin:0">Leave this household. Your login and other households stay.</p><button class="danger small">Leave</button>
+  </form>
+</section>
+</div>
+
+{# ------------------------------------------------------------------ backup #}
+{% elif tab == 'data' %}
+{% set prof = request.state.profile %}
+{% if problem %}<p class="flash bad" role="alert">{{ problem }}</p>{% endif %}
+<div class="grid2">
+<section>
+  <h2>Backup</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <p>Everything in <strong>{{ prof.name }}</strong>: accounts, transactions, bills, rules, categories, limits, settings and the mortgage, in one file.</p>
+    <p class="muted small">Bank connections aren’t included. After restoring, connect again under Bank connection.</p>
+    <form method="post" action="/data/backup" class="fields">
+      <label class="wide">Lock it with a passphrase (optional) <input name="passphrase" type="password" autocomplete="new-password" minlength="8" placeholder="Leave empty for an unlocked zip"></label>
+      <div class="wide"><button>Download backup</button></div>
+    </form>
+  </div>
+</section>
+<section>
+  <h2>Export to a spreadsheet</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <p>A zip with one CSV file per list (transactions, pending, accounts, categories, rules, bills, mortgage) that opens in Excel, Numbers or Google Sheets.</p>
+    <form method="post" action="/data/export"><button class="quiet">Download CSV files</button></form>
+  </div>
+</section>
+</div>
+<section class="section narrow">
+  <h2>Restore</h2>
+  <form method="post" action="/data/restore/check" enctype="multipart/form-data" class="panel" style="margin-top:.75rem">
+    <p>Replace everything in {{ prof.name }} with a backup. Payday checks the file and shows you what’s in it before anything changes.</p>
+    <div class="fields">
+      <label class="wide">Backup file <input type="file" name="file" accept=".zip,.json,.payday,application/zip" required></label>
+      <label>Passphrase, if it’s locked <input name="passphrase" type="password" autocomplete="off"></label>
+      <div><button class="quiet">Check backup</button></div>
+    </div>
+  </form>
+</section>
+
+{# ------------------------------------------------------------------ you #}
+{% else %}
+<section>
+  <h2>Appearance</h2>
+  <form method="post" action="/me" class="panel" style="margin-top:.75rem">
+    <fieldset class="themes">
+      <legend>Theme</legend>
+      {% for key, t in THEMES.items() %}
+      <label class="theme-card">
+        <input type="radio" name="theme" value="{{ key }}" data-autosubmit {% if me.theme == key %}checked{% endif %}>
+        <span class="swatch" aria-hidden="true">
+          {% for m in ['light', 'dark'] %}{% set c = t[m] %}
+          <span class="half" style="background:{{ c.bg }}">
+            <span class="tile" style="background:{{ c.surface }}; border-color:{{ c.line }}">
+              <span class="bar" style="background:{{ c.bush }}"></span><span class="bar short" style="background:{{ c.flax }}"></span><span class="bar tiny" style="background:{{ c.rata }}"></span>
+            </span>
+          </span>{% endfor %}
+        </span>
+        <span class="name">{{ t.label }}</span>
+        <span class="about">{{ t.about }}</span>
+      </label>
+      {% endfor %}
+    </fieldset>
+    <div class="fields" style="margin-top:1rem">
+      <label>Light or dark
+        <select name="mode" data-autosubmit>
+          {% for v, l in MODES.items() %}<option value="{{ v }}" {% if me.mode == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select></label>
+      <label>Text size
+        <select name="text_size" data-autosubmit>
+          {% for v, l in [('small','Small'),('normal','Normal'),('large','Large')] %}<option value="{{ v }}" {% if me.text_size == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <noscript><button style="margin-top:.75rem">Save</button></noscript>
+  </form>
+</section>
+
+<div class="grid2 section">
+  <section>
+    <h2>Username</h2>
+    <form method="post" action="/me/username" class="panel fields" style="margin-top:.75rem">
+      <label>New username <input name="username" value="{{ me.username }}" autocapitalize="none" spellcheck="false" maxlength="40" minlength="3" pattern="[A-Za-z0-9._\-]{3,40}" autocomplete="username" required></label>
+      <label>Your password <input name="current" type="password" autocomplete="current-password" required></label>
+      <div class="wide"><button>Change username</button></div>
+    </form>
+  </section>
+  <section>
+    <h2>Password</h2>
+    <form method="post" action="/me/password" class="panel fields" style="margin-top:.75rem">
+      <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
+      <label>New password, 10 characters or more <input name="new" type="password" autocomplete="new-password" minlength="10" required></label>
+      <div class="wide"><button>Change password</button></div>
+    </form>
+  </section>
+</div>
+<section class="section narrow">
+  <h2>Two-step sign-in</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <p>On. Each sign-in needs a code from your authenticator app. You have <strong>{{ codes_left }}</strong> backup code{{ 's' if codes_left != 1 }} left.</p>
+    <div class="grid2">
+      <form method="post" action="/me/2fa/codes" class="fields">
+        <label>Your password <input name="current" type="password" autocomplete="current-password" required></label>
+        <div class="wide"><button class="quiet">New backup codes</button></div>
+      </form>
+      <form method="post" action="/me/2fa/reset" class="fields" data-confirm="Set up your authenticator again? You’ll be signed out and asked to scan a new code.">
+        <label>Your password <input name="current" type="password" autocomplete="current-password" required></label>
+        <div class="wide"><button class="quiet">Moved to a new phone</button></div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section class="section narrow">
+  <h2>Email</h2>
+  <form method="post" action="/me/email" class="panel fields" style="margin-top:.75rem">
+    <p class="wide" style="margin:0">{% if me.email %}{{ me.email }}{% if not me.email_verified %} <span class="chip due">not confirmed</span>{% endif %}{% else %}No email address yet. Add one so you can reset your password.{% endif %}</p>
+    <label>New email <input name="email" type="email" autocomplete="email" required></label>
+    <label>Your password <input name="current" type="password" autocomplete="current-password" required></label>
+    <div class="wide"><button class="quiet">{{ 'Change email' if me.email else 'Add email' }}</button></div>
+  </form>
+</section>
+
+<section class="section narrow">
+  <h2>Signed-in devices</h2>
+  <div class="panel actions" style="margin-top:.75rem; justify-content:space-between">
+    <p style="margin:0">Lost a phone, or signed in somewhere you shouldn’t have? Sign out of Payday on every device, including this one.</p>
+    <form method="post" action="/me/signout-everywhere" data-confirm="Sign out of Payday on every device?"><button class="quiet">Sign out everywhere</button></form>
+  </div>
+</section>
+
+<section class="section narrow">
+  <h2>Install as an app</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <p>Add Payday to your home screen or desktop so it opens like an app.</p>
+    <p><button type="button" data-install hidden>Install Payday</button></p>
+    <p class="muted small" style="margin:0"><strong>Android, Chrome:</strong> menu, then <em>Add to home screen</em> or <em>Install app</em>.<br>
+    <strong>iPhone, Safari:</strong> Share, then <em>Add to Home Screen</em>.<br>
+    <strong>Computer, Chrome or Edge:</strong> the install icon at the right of the address bar.</p>
+  </div>
+</section>
+
+<section class="section narrow" id="delete">
+  <h2>Delete your account</h2>
+  <form method="post" action="/me/delete" class="panel fields danger-panel" style="margin-top:.75rem" data-confirm="Delete your account? This can’t be undone.">
+    <p class="wide" style="margin:0">Removes your login. Any household where you’re the only member is deleted with all its data, and its bank connection is ended. Download a backup first if you want to keep anything.</p>
+    <label>Your password <input name="current" type="password" autocomplete="current-password" required></label>
+    <label>Code from your app <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required></label>
+    <label>Type <strong>delete</strong> <input name="confirm" autocomplete="off" required></label>
+    <div class="wide"><button class="danger">Delete my account</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Households and sign-ins · Payday{% endblock %}
+{% block content %}
+{% set me = request.state.user %}
+{% set notes = {'created': 'Household created.', 'deleted': 'Household deleted, with all its data.', 'invited': 'Invite link made.',
+  'resetlink': 'Password link made for ' ~ request.query_params.get('who', '') ~ '. It works once, for 24 hours.',
+  '2fa': 'Two-step sign-in reset for ' ~ request.query_params.get('who', '') ~ '. They’ll set it up again next time they sign in.',
+  'userdeleted': 'Login deleted.', 'saved': 'Saved.', 'approved': request.query_params.get('who', '') ~ ' approved. Their household is ready.'} %}
+{% set bad = {'badconfirm': 'Type the household’s name exactly to delete it.', 'badname': 'Give the household a name.',
+  'syncing': 'That household is syncing with the bank. Try again in a minute.',
+  'lastadmin': request.query_params.get('who', '') ~ ' is the only admin of a household. Make someone else admin there first.',
+  'badcode': 'Your password or code wasn’t right, so nothing was downloaded.'} %}
+<div class="pagehead"><div><h1>Households and sign-ins</h1></div>
+  <a class="btn quiet small" href="/site/details">Site details and sign-up</a></div>
+{% set info = site_info() %}
+{% if not info.contact_email or not info.policy_date %}<a class="notice" href="/site/details"><span><strong>Fill in your business details</strong> before opening sign-up: they appear in the privacy policy, terms and contact page.</span><span class="btn quiet small">Site details</span></a>{% endif %}
+{% if not info.email_on %}<p class="notice"><span><strong>Email isn’t set up.</strong> Sign-up checks and password resets are written to the server log instead of sent. Add the SMTP_ settings to stack.env.</span></p>{% endif %}
+{% set waiting = users|selectattr('status', 'equalto', 'pending')|list %}
+{% if waiting %}
+<section class="section">
+  <h2>Waiting for approval</h2>
+  <div class="list" style="margin-top:.75rem">
+    {% for u in waiting %}
+    <div class="row"><div class="grow"><span class="title">{{ u.signup_household }}</span>
+      <div class="muted small">{{ u.username }}, {{ u.email }}{% if u.created_at %}, signed up {{ u.created_at|dmy }}{% endif %}</div></div>
+      <form method="post" action="/site/users/{{ u.id }}/approve"><button class="small">Approve</button></form>
+      <form method="post" action="/site/users/{{ u.id }}/delete" data-confirm="Decline and delete {{ u.username }}’s sign-up?"><button class="danger small">Decline</button></form></div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% if msg in notes %}<p class="flash" role="status">{{ notes[msg] }}</p>{% elif msg in bad %}<p class="flash bad" role="alert">{{ bad[msg] }}</p>{% endif %}
+{% if link %}
+<div class="panel invite-link" role="status">
+  <strong>{{ 'Password link' if msg == 'resetlink' else 'Invite link' }}</strong>
+  <p class="muted small">Send it to the person yourself. It works once{{ ', for 24 hours' if msg == 'resetlink' else ', for 7 days' }}.</p>
+  <div class="copyrow"><input readonly value="{{ link }}" aria-label="Link" data-select-all><button type="button" class="quiet" data-copy="{{ link }}">Copy</button></div>
+</div>
+{% endif %}
+
+<section class="section">
+  <h2>Households</h2>
+  <div class="list" style="margin-top:.75rem">
+    {% for p in profiles %}
+    <div class="row">
+      <div class="grow"><span class="title">{{ p.name }}</span>{% if p.id in mine %} <span class="chip">you’re in it</span>{% endif %}
+        <div class="muted small">{% set ms = by_profile.get(p.id, []) %}{{ ms|length }} member{{ 's' if ms|length != 1 }}{% if ms %}: {% for n, r in ms %}{{ n }}{{ ' (admin)' if r == 'admin' }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</div></div>
+      <form method="post" action="/site/profiles/{{ p.id }}/invite"><button class="quiet small">Invite an admin</button></form>
+      <details class="more danger-zone">
+        <summary class="btn danger small">Delete</summary>
+        <form method="post" action="/site/profiles/{{ p.id }}/delete" class="pop">
+          <p class="small">Deletes {{ p.name }} and all its data, for everyone in it. This can’t be undone.</p>
+          <label>Type <strong>{{ p.name }}</strong> <input name="confirm" autocomplete="off" required></label>
+          <button class="danger small">Delete for good</button>
+        </form>
+      </details>
+    </div>
+    {% else %}<div class="row muted">No profiles yet.</div>{% endfor %}
+  </div>
+  <form method="post" action="/site/profiles" class="panel fields" style="margin-top:.75rem">
+    <label>New household name <input name="name" maxlength="60" placeholder="e.g. Mum and Dad" required></label>
+    <label class="check"><input type="checkbox" name="join" value="true"> Make me its admin</label>
+    <div class="wide"><button>Create household</button> <span class="muted small">Leave the box unticked to get an invite link for its first admin instead.</span></div>
+  </form>
+</section>
+
+<section class="section">
+  <h2>Sign-ins</h2>
+  <div class="list" style="margin-top:.75rem">
+    {% for u in users %}
+    <div class="row">
+      <div class="grow"><span class="title">{{ u.username }}</span>{% if u.id == me.id %} <span class="chip">you</span>{% endif %}{% if u.is_owner %} <span class="chip paid">site owner</span>{% endif %}
+        <div class="muted small">{{ u.email or 'no email' }}{% if u.email and not u.email_verified %} (unconfirmed){% endif %} · {{ user_profiles.get(u.id, [])|join(', ') or ('waiting for approval' if u.status == 'pending' else 'unconfirmed sign-up' if u.status == 'unverified' else 'in no household') }}{% if not u.totp_enabled and u.status == 'active' %} · two-step sign-in not set up{% endif %}</div></div>
+      {% if u.id != me.id %}
+      <form method="post" action="/site/users/{{ u.id }}/reset"><button class="quiet small">Password link</button></form>
+      {% if u.totp_enabled %}<form method="post" action="/site/users/{{ u.id }}/2fa" data-confirm="Reset {{ u.username }}’s two-step sign-in? Do this only if you’re sure it’s really them asking."><button class="quiet small">Reset 2FA</button></form>{% endif %}
+      <form method="post" action="/site/users/{{ u.id }}/owner"><button class="quiet small">{{ 'Remove as owner' if u.is_owner else 'Make owner' }}</button></form>
+      <form method="post" action="/site/users/{{ u.id }}/delete" data-confirm="Delete the login {{ u.username }}? They’ll be removed from every profile."><button class="danger small">Delete</button></form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="section narrow">
+  <h2>Whole-site backup</h2>
+  <form method="post" action="/site/backup" class="panel fields" style="margin-top:.75rem">
+    <p class="wide" style="margin:0">Every household’s data, the site database and the key file, in one zip. The key file can decrypt saved bank tokens, so this needs your password and a fresh code. Store it somewhere safe.</p>
+    <label>Your password <input name="password" type="password" autocomplete="current-password" required></label>
+    <label>Code from your app <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required></label>
+    <div class="wide"><button class="quiet">Download site backup</button></div>
+  </form>
+</section>
+{% endblock %}

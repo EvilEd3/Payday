@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+data/
+pgdata/
+secrets/
+*.db
+*.db-*
+*.key
+*.payday
+*.zip
+.venv/

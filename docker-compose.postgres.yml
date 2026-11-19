@@ -1,0 +1,39 @@
+# Payday with PostgreSQL, for trying the cloud set-up on one machine.
+# Start: docker compose -f docker-compose.postgres.yml up -d --build
+# In the cloud, use a managed PostgreSQL instead of the "db" service and set DATABASE_URL to it.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: payday
+      POSTGRES_USER: payday
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payday -d payday"]
+      interval: 5s
+      retries: 10
+
+  payday:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+    secrets: [database_url]
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data   # holds payday.key (or set PAYDAY_KEY instead)
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  database_url:
+    file: ./secrets/database_url.txt   # postgresql://payday:<password>@db:5432/payday
