@@ -122,7 +122,10 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
     # Pay-period budget: this pay's income minus every bill due this period.
     # Day-to-day = spending (net of refunds) not linked to a bill, from accounts set to count spending.
     bills_total = to_come + bills_paid
-    budget = income - bills_total
+    from .goals import all_goals, budget_for_goals
+    goals = all_goals(session, today, balances)
+    goals_total = 0.0 if is_past else budget_for_goals(goals)  # set aside for goals, like a bill
+    budget = income - bills_total - goals_total
     day_to_day = -sum(t.amount for t in txns if counts_as_day_to_day(t, kind(t), acc_map))
     pending = pending_spending(session, acc_map, start, payday) if not is_past else []
     pending_total = -sum(p.amount for p in pending)
@@ -153,7 +156,7 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
         to_come=to_come, bills_paid=bills_paid, bills_pending=bills_pending, free=free,
         per_day=free / days_left if days_left else 0,
         upcoming=upcoming, paid=paid, runway=runway, all_accounts=all_accounts,
-        bills_total=bills_total, budget=budget, day_to_day=day_to_day, budget_left=budget_left,
+        bills_total=bills_total, goals=goals, goals_total=goals_total, budget=budget, day_to_day=day_to_day, budget_left=budget_left,
         planned_per_day=planned_per_day,
         budget_per_day=budget_left / days_left if days_left else 0,
         avg_per_day=day_to_day / period_days if period_days else 0,

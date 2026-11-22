@@ -1,5 +1,5 @@
 {% set me = request.state.user %}
-{% set more_pages = ['payees', 'settings', 'mortgage', 'site'] %}
+{% set more_pages = ['payees', 'goals', 'settings', 'mortgage', 'site'] %}
 {% set prof = request.state.profile %}{% set profs = request.state.profiles %}
 <!doctype html>
 {% set bc = browser_colour(me.theme if me else 'bush', me.mode if me else 'auto') %}
@@ -24,7 +24,9 @@
 </head>
 <body class="{{ 'private' if private() else '' }} {{ 'viewer' if me and me.role != 'admin' else '' }} page-{{ page or 'other' }}" data-sync-running="{{ '1' if sync_running() else '0' }}">
 {% macro privacy_button(cls='quiet small') %}
-<form method="post" action="/privacy"><button class="{{ cls }}" aria-pressed="{{ 'true' if private() else 'false' }}">{{ 'Show amounts' if private() else 'Hide amounts' }}</button></form>
+{% set hidden = private() %}<form method="post" action="/privacy"><button class="icon eye" aria-pressed="{{ 'true' if hidden else 'false' }}" aria-label="{{ 'Show amounts' if hidden else 'Hide amounts' }}" title="{{ 'Show amounts' if hidden else 'Hide amounts' }}">
+{% if hidden %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.5 10.5 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-3.1 3.9M6.6 6.6A17 17 0 0 0 2.5 12S6 19 12 19a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z"/><circle cx="12" cy="12" r="3"/></svg>{% endif %}</button></form>
 {% endmacro %}
 {% macro switcher(cls='') %}
 {% if profs|length > 1 %}
@@ -50,6 +52,7 @@
     <a href="/transactions" {% if page=='transactions' %}aria-current="page"{% endif %}>Transactions{% if rc %}<span class="badge" title="{{ rc }} to review">{{ rc }}</span>{% endif %}</a>
     <a href="/payees" {% if page=='payees' %}aria-current="page"{% endif %}>Payees</a>
     <a href="/bills" {% if page=='bills' %}aria-current="page"{% endif %}>Bills</a>
+    <a href="/goals" {% if page=='goals' %}aria-current="page"{% endif %}>Goals</a>
     {% if has_loan() %}<a href="/mortgage" {% if page=='mortgage' %}aria-current="page"{% endif %}>Mortgage</a>{% endif %}
     <a href="/settings" {% if page=='settings' %}aria-current="page"{% endif %}>Settings</a>
   </nav>
@@ -58,7 +61,7 @@
   <div class="who">
     {% if prof %}{{ privacy_button() }}{% endif %}
     <details class="usermenu">
-      <summary aria-label="Your account"><span class="avatar" aria-hidden="true">{{ me.username[:1]|upper }}</span></summary>
+      <summary aria-label="Your account">{{ badge(me) }}</summary>
       <div class="menu">
         <div class="me">{{ me.username }}{% if prof %}<small>{{ 'Admin' if me.role == 'admin' else 'Read only' }} in {{ prof.name }}</small>{% endif %}</div>
         <a href="/settings?tab=you">Your settings</a>
@@ -87,6 +90,7 @@
     <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01"/><path d="M12 12h.01"/><path d="M19 12h.01"/></svg>More</summary>
     <div class="sheet">
       <a href="/payees" {% if page=='payees' %}aria-current="page"{% endif %}>Payees</a>
+      <a href="/goals" {% if page=='goals' %}aria-current="page"{% endif %}>Goals</a>
       {% if has_loan() %}<a href="/mortgage" {% if page=='mortgage' %}aria-current="page"{% endif %}>Mortgage</a>{% endif %}
       <a href="/settings" {% if page=='settings' %}aria-current="page"{% endif %}>Settings</a>
       {% if me.is_owner %}<a href="/site" {% if page=='site' %}aria-current="page"{% endif %}>Households and sign-ins</a>{% endif %}

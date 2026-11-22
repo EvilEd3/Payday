@@ -139,6 +139,12 @@ def period_summary(ctx: Ctx, offset: int) -> dict:
                       "bills": billed})
     purchases = [t for t in spending if t.amount < 0 and t.bill_id is None]
     payees = [g for g in payee_groups(ctx, spending) if g["out"] > 0]
+    tags: dict[str, list] = {}
+    for t in spending:
+        for tag in {x.strip() for x in (t.tags or "").split(",") if x.strip()}:
+            row = tags.setdefault(tag, [0.0, 0])
+            row[0] -= t.amount
+            row[1] += 1
     return {
         "start": start, "end": end, "last": end - timedelta(days=1), "days": days, "elapsed": elapsed, "offset": offset,
         "income": income, "spent": spent, "bills": bills, "day_to_day": day_to_day,
@@ -147,6 +153,7 @@ def period_summary(ctx: Ctx, offset: int) -> dict:
         "biggest": (big := min(purchases, key=lambda t: t.amount) if purchases else None),
         "biggest_payee": payee_key(big) if big else "",
         "count": len(purchases), "payees": payees[:6],
+        "tags": sorted(((k, v, n) for k, (v, n) in tags.items() if v > 0.004), key=lambda r: -r[1]),
         "most_visited": max(payees, key=lambda g: g["count"]) if payees else None,
         "no_spend_days": sum(1 for d in daily if not d["future"] and d["value"] <= 0.004),
         "pending_total": pending_total, "pending_count": len(pending),
@@ -205,7 +212,8 @@ def bars(values: list[float], labels: list[str], target: float | None = None,
          hrefs: list[str | None] | None = None, axis: list[str] | None = None,
          show_values: bool = True, part: list[float] | None = None,
          trend: list[float | None] | None = None, stack: list[float] | None = None,
-         stack_hrefs: list[str | None] | None = None) -> Markup:
+         stack_hrefs: list[str | None] | None = None, low: list[bool] | None = None,
+         target_cls: str = "") -> Markup:
     """Column chart in HTML, so value labels can wrap, rotate on phones and blur in privacy mode.
     With `stack`, a second amount (bills) sits on top of each column in its own colour, with its own link."""
     n = max(len(values), 1)
@@ -251,14 +259,15 @@ def bars(values: list[float], labels: list[str], target: float | None = None,
                if show_values and v > 0.004 else "")
         share = (part[i] / v * 100) if part and v > 0.004 else 0  # e.g. the pending part, drawn lighter on top
         stripe = f'<span class="cc-part" style="height:{min(share, 100):.2f}%"></span>' if share > 0 else ""
-        inner = (f'<span class="cc-bar{" faded" if faded else ""}" style="height:{pct:.2f}%">{stripe}{val}</span>')
+        flag = (" faded" if faded else "") + (" low" if low and low[i] else "")
+        inner = (f'<span class="cc-bar{flag}" style="height:{pct:.2f}%">{stripe}{val}</span>')
         href = hrefs[i] if hrefs else None
         tag = "a" if href and v > 0 else "span"
         attr = f' href="{escape(href)}"' if tag == "a" else ""
         cols.append(f'<{tag} class="cc-col"{attr} title="{escape(labels[i])}">{inner}</{tag}>')
     line = ""
     if target:
-        line = f'<span class="cc-target" style="--t:{min(target / top, 1):.4f}"></span>'
+        line = f'<span class="cc-target {target_cls}" style="--t:{min(target / top, 1):.4f}"></span>'
     if trend and any(t is not None for t in trend):
         # x runs 0..n so each point sits over the middle of its day's column; y is 0..100 from the bottom
         pts = [(i + .5, 100 - max(t, 0) / top * 100) for i, t in enumerate(trend) if t is not None]

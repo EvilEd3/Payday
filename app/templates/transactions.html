@@ -18,11 +18,12 @@
 
 {% set rc = review_count() %}
 {% if rc %}<a class="notice" href="/review" style="text-decoration:none"><span><strong>{{ rc }} to review.</strong> Categories Payday had to guess.</span><span class="btn quiet small">Review</span></a>{% endif %}
-<form method="get" action="/transactions" class="searchbar" role="search">
+<form method="get" action="/transactions" class="searchbar" role="search" data-live="#results">
   <input type="search" name="search" value="{{ search }}" placeholder="Search all time: payee, note, tag or amount" aria-label="Search all transactions">
   <button class="quiet">Search</button>
 </form>
 
+<div id="results">
 {% if view == 'transfers' %}
 <div class="lede small" style="margin-bottom:.75rem">Money moved between your own accounts. It’s left out of income and spending.
   <form class="admin-only" method="post" action="/transfers/recheck" style="display:inline"><button class="linkish">Check for more transfers</button></form></div>
@@ -44,9 +45,20 @@
 </details>
 {% endif %}
 
+<div class="tablebar">
+  <details class="colmenu" data-cols="txns">
+    <summary class="btn quiet small">Columns</summary>
+    <div class="pop">
+      <p class="small muted">Show these columns</p>
+      {% for key, label in [('acct', 'Account'), ('cat', 'Category'), ('notes', 'Notes and tags'), ('amt', 'Amount')] %}
+      <label class="check"><input type="checkbox" value="{{ key }}" checked> <span>{{ label }}</span></label>
+      {% endfor %}
+    </div>
+  </details>
+</div>
 <div class="panel flush">
-<table class="txns nosearch">
-  <thead><tr><th>Date</th><th>Description</th><th>Account</th><th>Category</th><th class="num">Amount</th><th class="admin-only"></th></tr></thead>
+<table class="txns nosearch" id="txns">
+  <thead><tr><th class="c-date">Date</th><th class="c-desc">Description</th><th class="c-acct">Account</th><th class="c-cat">Category</th><th class="c-notes">Notes and tags</th><th class="c-amt num">Amount</th><th class="c-more admin-only"></th></tr></thead>
   <tbody>
   {% for t in txns %}
   {% set acc = accounts.get(t.account_id) %}
@@ -57,8 +69,7 @@
     <td class="c-desc">
       <div class="payee">{{ t.merchant or t.description }}</div>
       {% if t.merchant and t.merchant|lower != t.description|lower %}<div class="sub">{{ t.description }}</div>{% endif %}
-      {% if t.note %}<div class="note">{{ t.note }}</div>{% endif %}
-      <div class="marks">{% if bill %}<a class="chip paid" href="/bills/{{ bill.id }}">{{ bill.name }} bill{% if t.bill_due_date %}, due {{ t.bill_due_date|short }}{% endif %}</a>{% endif %}{% if partner and accounts.get(partner.account_id) %}<span class="chip">{{ 'To ' if t.amount < 0 else 'From ' }}{{ accounts[partner.account_id].name }}</span>{% endif %}{% for tg in t.tags.split(',') if tg.strip() %}<a class="chip" href="/transactions?tag={{ tg.strip()|urlencode }}">#{{ tg.strip() }}</a>{% endfor %}</div>
+      <div class="marks">{% if bill %}<a class="chip paid" href="/bills/{{ bill.id }}">{{ bill.name }} bill{% if t.bill_due_date %}, due {{ t.bill_due_date|short }}{% endif %}</a>{% endif %}{% if partner and accounts.get(partner.account_id) %}<span class="chip">{{ 'To ' if t.amount < 0 else 'From ' }}{{ accounts[partner.account_id].name }}</span>{% endif %}</div>
     </td>
     <td class="c-acct">{% if acc %}<a href="/accounts/{{ acc.id }}">{{ acc.name }}</a>{% endif %}{% if acc and acc.institution %}<div class="sub">{{ acc.institution }}</div>{% endif %}</td>
     <td class="c-cat">
@@ -76,6 +87,7 @@
       {% elif t.category_source in ('akahu', 'default') and not t.reviewed and not t.transfer_id and not t.bill_id %}<div class="why"><a href="/review">A guess. Review it</a></div>
       {% elif why.get(t.category_source) %}<div class="why">{{ why[t.category_source] }}</div>{% endif %}
     </td>
+    <td class="c-notes{{ ' blank' if not t.note and not t.tags.strip() }}">{% if t.note %}<div class="note">{{ t.note }}</div>{% endif %}{% if t.tags.strip() %}<div class="marks">{% for tg in t.tags.split(',') if tg.strip() %}<a class="chip" href="/transactions?tag={{ tg.strip()|urlencode }}">#{{ tg.strip() }}</a>{% endfor %}</div>{% endif %}</td>
     <td class="c-amt num {{ 'pos' if t.amount > 0 }}" data-sort="{{ t.amount }}">{{ t.amount|money(True) }}</td>
     <td class="c-more admin-only">
       <details class="more">
@@ -118,10 +130,11 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="6" class="empty">{{ 'Nothing matches that.' if filtered else 'No transactions in this pay period yet.' }}</td></tr>
+  <tr><td colspan="7" class="empty">{{ 'Nothing matches that.' if filtered else 'No transactions in this pay period yet.' }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
 {% if found > txns|length %}<p class="muted small" style="margin-top:.75rem">Showing the latest {{ txns|length }} of {{ found }}. Narrow the search to see older ones.</p>{% endif %}
+</div>
 {% endblock %}

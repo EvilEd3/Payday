@@ -33,7 +33,7 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
                    make_cookie, make_invite, make_pre_cookie, memberships, new_backup_codes, new_totp_secret, otpauth_uri,
                    password_problem, profile_admins, refresh_cookie, use_backup_code, user_from_cookie,
                    user_from_pre_cookie, verify_password)
-from .db import (Account, Bill, Category, Invite, Loan, LoanEntry, LoanRate, Membership, PendingTransaction, Profile,
+from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, PendingTransaction, Profile,
                  PropertyValue, Rule, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
 from .insights import (Ctx, bars, category_averages, category_limits, change, detect_subscriptions, donut,
@@ -206,7 +206,7 @@ PUBLIC_PATHS = ("/login", "/setup", "/invite/", "/reset/", "/2fa/", "/manifest.w
 NO_PROFILE_PATHS = ("/site", "/me", "/logout", "/profiles/", "/no-profile")
 # Changes a read-only member may still make (their own preferences, sign-in and which profile they're viewing).
 VIEWER_POSTS = ("/logout", "/privacy", "/me", "/me/password", "/me/username", "/me/signout-everywhere",
-                "/me/2fa/reset", "/me/2fa/codes", "/me/email", "/me/delete", "/profiles/switch", "/profiles/leave")
+                "/me/2fa/reset", "/me/2fa/codes", "/me/email", "/me/delete", "/me/badge", "/profiles/switch", "/profiles/leave")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "").strip().rstrip("/")
 EXTRA_HOSTS = {h.strip().lower() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()}
 
@@ -789,6 +789,37 @@ def save_prefs(request: Request, text_size: str = Form(""), theme: str = Form(""
     return _settings("you", msg="saved")
 
 
+BADGE_EMOJI = ["🙂", "😎", "🦊", "🐨", "🐧", "🦉", "🐝", "🐙", "🌿", "🌻", "🌊", "⛰️", "☕", "🎧", "🚲", "⭐"]
+BADGE_COLOURS = {"bush": "#2F7D5B", "sea": "#1F6F99", "kowhai": "#B8860B", "rata": "#C0392B",
+                 "plum": "#7D3C98", "slate": "#4B5563", "pohutu": "#D35C7E", "fern": "#5B8C2A"}
+
+
+def badge(user) -> Markup:
+    """The round badge for a person: their emoji, or their initial on their colour."""
+    if not user:
+        return Markup("")
+    colour = BADGE_COLOURS.get(getattr(user, "badge_colour", ""))
+    style = f' style="--badge:{colour}"' if colour else ""
+    cls = "avatar" + (" coloured" if colour else "")
+    emoji = getattr(user, "badge_emoji", "")
+    if emoji in BADGE_EMOJI:
+        return Markup(f'<span class="{cls} emoji"{style} aria-hidden="true">{emoji}</span>')
+    return Markup(f'<span class="{cls}"{style} aria-hidden="true">{escape(user.username[:1].upper())}</span>')
+
+
+templates.env.globals.update(badge=badge, BADGE_EMOJI=BADGE_EMOJI, BADGE_COLOURS=BADGE_COLOURS)
+
+
+@app.post("/me/badge")
+def save_badge(request: Request, emoji: str = Form(""), colour: str = Form(""), s: Session = Depends(site_session)):
+    user = s.get(User, request.state.user.id)
+    user.badge_emoji = emoji if emoji in BADGE_EMOJI else ""
+    user.badge_colour = colour if colour in BADGE_COLOURS else ""
+    s.add(user)
+    s.commit()
+    return _settings("you", msg="saved")
+
+
 @app.post("/me/password")
 def change_password(request: Request, current: str = Form(...), new: str = Form(...),
                     s: Session = Depends(site_session)):
@@ -1060,7 +1091,7 @@ def service_worker():
 @app.get("/")
 def dashboard(request: Request, offset: int = 0, s: Session = Depends(session)):
     return templates.TemplateResponse(request, "dashboard.html",
-                                      {"d": build_dashboard(s, today(), offset), "page": "home"})
+                                      {"d": build_dashboard(s, today(), offset), "page": "home", "warn": rate_warning(s)})
 
 
 @app.post("/privacy")
@@ -1496,6 +1527,14 @@ def summary(request: Request, offset: int = 0, s: Session = Depends(session)):
             spent_so_far += d["value"]
             trend.append((dash["budget"] - spent_so_far) / (cur["days"] - i))
     day_rate = next((t for t in reversed(trend) if t is not None), None)
+    warn = rate_warning(s)
+    rate_chart = None
+    if trend:
+        rate_chart = bars([max(t or 0, 0) for t in trend], [d["date"].strftime("%-d %b") for d in cur["daily"]],
+                          target=warn, target_cls="warn",
+                          highlight=[t is not None for t in trend],
+                          axis=[d["date"].strftime("%-d") for d in cur["daily"]], show_values=not is_private(),
+                          low=[t is not None and warn is not None and t < warn for t in trend], height=140)
     where = [("Bills", cur["bills"], f"/transactions?view=bills{o}"),
              ("Day to day", cur["day_to_day"], f"/transactions?view=daytoday{o}")]
     if cur["saved"] > 0:
@@ -1511,13 +1550,118 @@ def summary(request: Request, offset: int = 0, s: Session = Depends(session)):
                             highlight=[not d["future"] for d in cur["daily"]],
                             hrefs=[f"/transactions?view=daytoday&day={d['date'].isoformat()}{o}" for d in cur["daily"]],
                             axis=[d["date"].strftime("%-d") for d in cur["daily"]], show_values=not is_private(),
-                            part=[d["pending"] for d in cur["daily"]], trend=trend or None,
+                            part=[d["pending"] for d in cur["daily"]],
                             stack=[d["bills"] for d in cur["daily"]],
                             stack_hrefs=[f"/transactions?view=bills&day={d['date'].isoformat()}{o}" for d in cur["daily"]]),
-        "day_rate": day_rate,
+        "day_rate": day_rate, "rate_chart": rate_chart, "warn": warn,
         "chg": {"spent": change(cur["spent"], prev["spent"]), "income": change(cur["income"], prev["income"]),
                 "per_day": change(cur["per_day"], prev["per_day"]), "day_to_day": change(cur["day_to_day"], prev["day_to_day"])},
         "cat_change": cat_change, "limits": dash["limits"]})
+
+
+def rate_warning(s: Session) -> float | None:
+    try:
+        v = float(get_setting(s, "day_rate_warning") or 0)
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
+@app.post("/summary/warning")
+def summary_warning(request: Request, amount: str = Form(""), offset: int = Form(0), s: Session = Depends(session)):
+    v = _float(amount)
+    set_setting(s, "day_rate_warning", f"{min(abs(v), 100000):.2f}" if v else "")
+    s.commit()
+    return back(f"/summary?offset={min(offset, 0)}#day-rate" if offset else "/summary#day-rate")
+
+
+# ---------- Goals ----------
+def _goal_values(s: Session, name: str, target: str, target_date: str, account_id: str, start_amount: str,
+                 budget_it: str) -> dict | None:
+    name, amount = name.strip()[:80], _float(target)
+    if not name or not amount or amount <= 0 or amount > 100_000_000:
+        return None
+    acc = s.get(Account, account_id) if account_id else None
+    return {"name": name, "target": round(amount, 2), "target_date": _day(target_date),
+            "account_id": acc.id if acc else None,
+            "start_amount": round(abs(_float(start_amount) or 0), 2) if acc else 0,
+            "budget_it": budget_it == "true"}
+
+
+@app.get("/goals")
+def goals_page(request: Request, s: Session = Depends(session)):
+    from .forecast import account_balance
+    from .goals import all_goals
+    accounts = s.exec(select(Account).order_by(Account.name)).all()
+    balances = {a.id: account_balance(s, a) for a in accounts}
+    rows = all_goals(s, today(), balances)
+    return templates.TemplateResponse(request, "goals.html", {
+        "goals": rows, "accounts": accounts, "balances": balances, "page": "goals",
+        "today": today(), "calendar": get_cycle(s).calendar,
+        "bad": request.query_params.get("bad") == "1"})
+
+
+@app.post("/goals")
+def add_goal(name: str = Form(""), target: str = Form(""), target_date: str = Form(""), account_id: str = Form(""),
+             start_amount: str = Form(""), budget_it: str = Form(""), saved: str = Form(""),
+             s: Session = Depends(session)):
+    values = _goal_values(s, name, target, target_date, account_id, start_amount, budget_it)
+    if not values:
+        return back("/goals?bad=1#add")
+    g = Goal(created=today(), **values)
+    if not g.account_id:
+        g.manual_saved = round(abs(_float(saved) or 0), 2)
+    s.add(g)
+    s.commit()
+    return back(f"/goals#g-{g.id}")
+
+
+@app.post("/goals/{goal_id}")
+def edit_goal(goal_id: int, name: str = Form(""), target: str = Form(""), target_date: str = Form(""),
+              account_id: str = Form(""), start_amount: str = Form(""), budget_it: str = Form(""),
+              s: Session = Depends(session)):
+    g = s.get(Goal, goal_id)
+    values = _goal_values(s, name, target, target_date, account_id, start_amount, budget_it) if g else None
+    if not values:
+        return back(f"/goals?bad=1#g-{goal_id}")
+    for k, v in values.items():
+        setattr(g, k, v)
+    s.add(g)
+    s.commit()
+    return back(f"/goals#g-{g.id}")
+
+
+@app.post("/goals/{goal_id}/add")
+def goal_add_money(goal_id: int, amount: str = Form(""), action: str = Form("add"), s: Session = Depends(session)):
+    g = s.get(Goal, goal_id)
+    v = _float(amount)
+    if g and not g.account_id and v:
+        if action == "set":
+            g.manual_saved = round(max(v, 0), 2)
+        else:
+            g.manual_saved = round(max((g.manual_saved or 0) + (-abs(v) if action == "take" else abs(v)), 0), 2)
+        s.add(g)
+        s.commit()
+    return back(f"/goals#g-{goal_id}")
+
+
+@app.post("/goals/{goal_id}/done")
+def goal_done(goal_id: int, s: Session = Depends(session)):
+    g = s.get(Goal, goal_id)
+    if g:
+        g.done = not g.done
+        s.add(g)
+        s.commit()
+    return back(f"/goals#g-{goal_id}")
+
+
+@app.post("/goals/{goal_id}/delete")
+def goal_delete(goal_id: int, s: Session = Depends(session)):
+    g = s.get(Goal, goal_id)
+    if g:
+        s.delete(g)
+        s.commit()
+    return back("/goals")
 
 
 # ---------- Mortgage ----------
@@ -1804,7 +1948,7 @@ def settings_page(request: Request, tab: str = "", s: Session = Depends(session)
             invites = [i for i in ss.exec(select(Invite).where(Invite.profile_id == prof.id, Invite.kind == "join",
                                                                 Invite.used_at == None)  # noqa: E711
                                           .order_by(Invite.created_at.desc())) if find_invite_row_live(i)]
-            ctx.update(members=[(m, u.username, u.totp_enabled) for m, u in rows], invites=invites,
+            ctx.update(members=[(m, u.username, u.totp_enabled, badge(u)) for m, u in rows], invites=invites,
                        link=request.query_params.get("link", "") if request.query_params.get("link", "").startswith(
                            _link(request, "/invite/")) else "")
     elif tab == "you":

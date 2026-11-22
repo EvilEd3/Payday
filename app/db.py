@@ -253,6 +253,8 @@ class User(SQLModel, table=True):
     status: str = "active"  # active | unverified (email not confirmed yet) | pending (waiting for the owner)
     terms_accepted_at: Optional[datetime] = None
     signup_household: str = ""  # the household name chosen at sign-up, made into a profile once approved
+    badge_emoji: str = ""  # shown instead of the initial, from BADGE_EMOJI
+    badge_colour: str = ""  # from BADGE_COLOURS
 
 
 class SiteSetting(SQLModel, table=True):
@@ -357,6 +359,20 @@ class PropertyValue(SQLModel, table=True):
     note: str = ""
 
 
+class Goal(SQLModel, table=True):
+    """Something to save for. Progress comes from a linked account's balance, or amounts added by hand."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    target: float
+    target_date: Optional[Date] = None
+    account_id: Optional[str] = None  # a savings account whose balance is the progress
+    start_amount: float = 0  # with an account: only the balance above this counts
+    manual_saved: float = 0  # without an account: what's been put aside so far
+    budget_it: bool = False  # take the per-pay amount out of the spending money, like a bill
+    created: Optional[Date] = None
+    done: bool = False
+
+
 class Setting(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str
@@ -409,7 +425,8 @@ SITE_COLUMNS = {
              ("totp_enabled", "BOOLEAN NOT NULL DEFAULT 0"), ("totp_last_step", "INTEGER NOT NULL DEFAULT 0"),
              ("backup_codes", "VARCHAR NOT NULL DEFAULT ''"), ("last_profile_id", "INTEGER"), ("email", "VARCHAR"),
              ("email_verified", "BOOLEAN NOT NULL DEFAULT 0"), ("status", "VARCHAR NOT NULL DEFAULT 'active'"),
-             ("terms_accepted_at", "TIMESTAMP"), ("signup_household", "VARCHAR NOT NULL DEFAULT ''")],
+             ("terms_accepted_at", "TIMESTAMP"), ("signup_household", "VARCHAR NOT NULL DEFAULT ''"),
+             ("badge_emoji", "VARCHAR NOT NULL DEFAULT ''"), ("badge_colour", "VARCHAR NOT NULL DEFAULT ''")],
 }
 
 

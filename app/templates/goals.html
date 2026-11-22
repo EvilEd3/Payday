@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "_macros.html" import dots %}
+{% block title %}Goals · Payday{% endblock %}
+{% block content %}
+{% set pay = 'month' if calendar else 'pay' %}
+{% macro goal_fields(g=none) %}
+  <label class="wide">Name <input name="name" maxlength="80" required value="{{ g.name if g else '' }}" placeholder="e.g. Holiday in Rarotonga"></label>
+  <label>Target amount <input name="target" inputmode="decimal" required value="{{ '%.2f'|format(g.target) if g else '' }}" placeholder="$3,000"></label>
+  <label>Target date <input name="target_date" type="date" value="{{ g.target_date.isoformat() if g and g.target_date else '' }}"></label>
+  <label>Savings account
+    <select name="account_id">
+      <option value="">None, I’ll add amounts myself</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {% if g and g.account_id == a.id %}selected{% endif %}>{{ a.name }} ({{ balances[a.id]|money }})</option>{% endfor %}
+    </select></label>
+  <label>Count only the balance above <input name="start_amount" inputmode="decimal" value="{{ '%.2f'|format(g.start_amount) if g and g.start_amount else '' }}" placeholder="$0"></label>
+  <label class="check wide"><input type="checkbox" name="budget_it" value="true" {% if g and g.budget_it %}checked{% endif %}>
+    <span>Budget for this: take the amount needed each {{ pay }} out of your spending money, like a bill</span></label>
+{% endmacro %}
+
+<div class="pagehead">
+  <div>
+    <h1>Goals</h1>
+    <p class="sub">{% set open = goals|rejectattr('done')|list %}{% if goals %}{{ open|length }} goal{{ 's' if open|length != 1 }} on the go{% if open %}, {{ open|sum(attribute='saved')|money }} saved of {{ open|sum(attribute='target')|money }}{% endif %}.{% else %}Save for a holiday, a car or a rainy day.{% endif %}</p>
+  </div>
+  <a class="btn admin-only" href="#add">Add a goal</a>
+</div>
+{% if bad %}<p class="flash bad" role="alert">That goal couldn’t be saved. It needs a name and a target amount above zero.</p>{% endif %}
+
+<div class="goals">
+{% for st in goals %}{% set g = st.goal %}
+<article class="panel goal{{ ' done' if st.done }}" id="g-{{ g.id }}">
+  <header>
+    <div>
+      <h2>{{ g.name }}</h2>
+      <p class="muted small">{% if st.account %}Saving in {{ st.account.name }}{% if g.start_amount %}, above {{ g.start_amount|money }}{% endif %}{% else %}Amounts added by hand{% endif %}{% if g.target_date %}. By {{ g.target_date|long }}{% endif %}</p>
+    </div>
+    {% if st.done %}<span class="chip paid">Reached</span>
+    {% elif st.overdue %}<span class="chip late">Past its date</span>
+    {% elif st.on_track is true %}<span class="chip paid">On track</span>
+    {% elif st.on_track is false %}<span class="chip late">Behind</span>{% endif %}
+  </header>
+
+  <div class="goalbar" role="img" aria-label="{{ (st.pct * 100)|round|int }}% saved">
+    <span style="width: {{ (st.pct * 100)|round(1) }}%"></span>
+    {% if st.expected and not st.done %}<i class="should" style="left: {{ [st.expected / st.target * 100, 100]|min|round(1) }}%" title="Where you’d be if saving evenly"></i>{% endif %}
+  </div>
+  <p class="goalnums"><strong>{{ st.saved|money }}</strong> <span class="muted">of {{ st.target|money }}, {{ (st.pct * 100)|round|int }}%</span></p>
+
+  {% if not st.done %}
+  <dl class="goalstats">
+    <div><dt>Still needed</dt><dd>{{ st.remaining|money }}</dd></div>
+    {% if st.per_pay is not none %}
+    <div><dt>A {{ pay }}{% if st.pays_left %}, {{ st.pays_left }} to go{% endif %}</dt><dd>{{ st.per_pay|money }}</dd></div>
+    <div><dt>A week</dt><dd>{{ st.per_week|money }}</dd></div>
+    <div><dt>A day</dt><dd>{{ st.per_day|money }}</dd></div>
+    {% endif %}
+    <div><dt>At this rate</dt><dd>{% if st.projected %}{{ st.projected|long }}{% else %}<span class="muted">Too early to tell</span>{% endif %}</dd></div>
+  </dl>
+  {% if g.budget_it %}<p class="small muted goalnote">{% if st.per_pay %}{{ st.per_pay|money }} is set aside from this {{ pay }}’s spending money.{% else %}Add a target date to set money aside each {{ pay }}.{% endif %}</p>{% endif %}
+  {% endif %}
+
+  <div class="goalactions admin-only">
+    {% if not st.account and not st.done %}
+    <form method="post" action="/goals/{{ g.id }}/add" class="inline-form">
+      <span class="money-in"><span>$</span><input name="amount" inputmode="decimal" size="6" required aria-label="Amount for {{ g.name }}"></span>
+      <button class="small" name="action" value="add">Add</button>
+      <button class="quiet small" name="action" value="take">Take out</button>
+    </form>
+    {% endif %}
+    <details class="more">
+      <summary aria-label="More for {{ g.name }}" title="Edit">{{ dots() }}</summary>
+      <div class="pop">
+        <form method="post" action="/goals/{{ g.id }}" class="fields one">
+          {{ goal_fields(g) }}
+          <div><button class="small">Save changes</button></div>
+        </form>
+        <hr>
+        <form method="post" action="/goals/{{ g.id }}/done"><div><button class="quiet small">{{ 'Not reached yet' if g.done else 'Mark as reached' }}</button></div></form>
+        <form method="post" action="/goals/{{ g.id }}/delete" data-confirm="Delete the {{ g.name }} goal?"><div><button class="danger small">Delete goal</button></div></form>
+      </div>
+    </details>
+  </div>
+</article>
+{% else %}
+<p class="panel empty-note">No goals yet. Add one below: give it a target and a date, and Payday works out what to put aside each {{ pay }}.</p>
+{% endfor %}
+</div>
+
+<section class="section admin-only" id="add">
+  <h2>Add a goal</h2>
+  <form method="post" action="/goals" class="panel fields billform" style="margin-top:.75rem">
+    {{ goal_fields() }}
+    <label>Saved so far, without an account <input name="saved" inputmode="decimal" placeholder="$0"></label>
+    <div class="wide"><button>Add goal</button></div>
+  </form>
+</section>
+{% endblock %}

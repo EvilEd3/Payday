@@ -273,8 +273,9 @@
 </div>
 {% endif %}
 <div class="list">
-  {% for m, name, has2fa in members %}
+  {% for m, name, has2fa, pic in members %}
   <div class="row">
+    {{ pic }}
     <div class="grow"><span class="title">{{ name }}</span>{% if m.user_id == me.id %} <span class="chip">you</span>{% endif %}
       <div class="muted small">{{ 'Admin' if m.role == 'admin' else 'Read only' }}{% if not has2fa %} · hasn’t finished setting up{% endif %}</div></div>
     {% if m.user_id != me.id %}
@@ -355,6 +356,24 @@
 {# ------------------------------------------------------------------ you #}
 {% else %}
 <section>
+  <h2>Your badge</h2>
+  <form method="post" action="/me/badge" class="panel badgeform" style="margin-top:.75rem">
+    <div class="badgepreview">{{ badge(me) }}<span class="muted small">Shown at the top of every page and in People.</span></div>
+    <fieldset class="pickrow">
+      <legend>Emoji</legend>
+      <label class="pick"><input type="radio" name="emoji" value="" data-autosubmit {% if not me.badge_emoji %}checked{% endif %}><span>{{ me.username[:1]|upper }}</span></label>
+      {% for e in BADGE_EMOJI %}<label class="pick"><input type="radio" name="emoji" value="{{ e }}" data-autosubmit {% if me.badge_emoji == e %}checked{% endif %}><span>{{ e }}</span></label>{% endfor %}
+    </fieldset>
+    <fieldset class="pickrow">
+      <legend>Colour</legend>
+      <label class="pick"><input type="radio" name="colour" value="" data-autosubmit {% if not me.badge_colour %}checked{% endif %}><span class="sw plain" title="Theme colour"></span></label>
+      {% for key, hex in BADGE_COLOURS.items() %}<label class="pick"><input type="radio" name="colour" value="{{ key }}" data-autosubmit {% if me.badge_colour == key %}checked{% endif %} aria-label="{{ key|capitalize }}"><span class="sw" style="background:{{ hex }}"></span></label>{% endfor %}
+    </fieldset>
+    <noscript><button>Save</button></noscript>
+  </form>
+</section>
+
+<section class="section">
   <h2>Appearance</h2>
   <form method="post" action="/me" class="panel" style="margin-top:.75rem">
     <fieldset class="themes">

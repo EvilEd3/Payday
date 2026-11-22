@@ -11,6 +11,13 @@
 </a>
 {% endif %}
 
+{% if warn and not d.is_past and d.income > 0 and d.budget_per_day < warn %}
+<a class="notice warnnote" href="/summary#day-rate">
+  <span><strong>Below your {{ warn|money }} a day warning.</strong> You have {{ d.budget_per_day|money }} a day {{ until }}.</span>
+  <span class="btn quiet small">See day rate</span>
+</a>
+{% endif %}
+
 {# ---------- the pay card: what's left of this pay, per day ---------- #}
 {% set base = [d.income, d.bills_total + d.day_to_day]|max %}
 <section class="paycard" aria-labelledby="headline">
@@ -112,6 +119,7 @@
       <tbody>
       <tr><td><a href="/transactions?view=income{{ q }}">Income this period</a></td><td class="num pos">{{ d.income|money }}</td></tr>
       <tr><td><a href="/transactions?view=bills{{ q }}">All bills this period</a></td><td class="num">−{{ d.bills_total|money }}</td></tr>
+      {% if d.goals_total %}<tr><td><a href="/goals">Set aside for goals</a></td><td class="num">−{{ d.goals_total|money }}</td></tr>{% endif %}
       <tr class="total"><td>Spending money</td><td class="num">{{ d.budget|money }}</td></tr>
       <tr><td><a href="/transactions?view=daytoday{{ q }}">Day-to-day spending{{ '' if d.is_past else ' so far' }}</a>
         {% if d.pending_count %}<div class="muted small">includes {{ d.pending_total|money }} not settled yet</div>{% endif %}</td><td class="num">−{{ d.day_to_day|money }}</td></tr>
@@ -127,6 +135,23 @@
     <p class="muted empty-note">This fills in once your pay lands and syncs. Until then the headline comes from your bank balances.</p>
     {% endif %}
   </section>
+
+  {# ---------- goals ---------- #}
+  {% set open_goals = d.goals|rejectattr('done')|list %}
+  {% if open_goals %}
+  <section class="block" id="goals">
+    <header><h2>Goals</h2><a class="small" href="/goals">All goals</a></header>
+    <ul class="ov-goals">
+      {% for st in open_goals[:4] %}
+      <li><a href="/goals#g-{{ st.goal.id }}">
+        <span class="top"><b>{{ st.goal.name }}</b><span>{{ st.saved|money }} <small>of {{ st.target|money }}</small></span></span>
+        <span class="goalbar"><span style="width: {{ (st.pct * 100)|round(1) }}%"></span></span>
+        <small>{% if st.overdue %}Past its date, {{ st.remaining|money }} to go{% elif st.per_pay %}{{ st.per_pay|money }} a {{ 'month' if d.calendar else 'pay' }} to reach it by {{ st.goal.target_date|long }}{% if st.on_track is false %}, behind{% endif %}{% else %}{{ st.remaining|money }} to go{% endif %}</small>
+      </a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
 
   {# ---------- accounts ---------- #}
   {% if not d.is_past %}

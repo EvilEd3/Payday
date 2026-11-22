@@ -54,7 +54,7 @@
 
   /* ---- pop-up menus: one open at a time; click away or Escape closes ---- */
   function popups() {
-    const SEL = "details.more, details.sheetwrap, details.switcher, details.usermenu";
+    const SEL = "details.more, details.sheetwrap, details.switcher, details.usermenu, details.colmenu";
     const menus = () => $$(SEL);
     document.addEventListener("toggle", (e) => {
       const d = e.target;
@@ -126,13 +126,21 @@
     const t = v.replace(/[−–]/g, "-").replace(/[\s$,×%+]/g, "");
     return /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null;
   };
-  function tables() {
-    $$("table").forEach((table) => {
+  const keep = {  // remembered in this browser across visits (sort order, columns)
+    get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private window: just don't remember */ } },
+  };
+  function tables(root) {
+    $$("table", root || document).forEach((table, tIndex) => {
+      if (table.dataset.ready) return;
+      table.dataset.ready = "1";
       const head = table.tHead && table.tHead.rows[0];
       const body = table.tBodies[0];
       if (!head || !body) return;
       const heads = [...head.cells];
       const dataRows = () => [...body.rows].filter((r) => r.cells.length >= heads.length);
+      // remembered per page and table, so the order survives changing period or coming back
+      const key = "sort:" + location.pathname + ":" + (table.id || table.className.split(" ")[0] || "t") + ":" + tIndex;
 
       [...body.rows].forEach((r) => [...r.cells].forEach((c, i) => {
         if (!c.hasAttribute("data-label") && heads[i]) c.dataset.label = heads[i].textContent.trim();
@@ -143,12 +151,12 @@
         th.classList.add("sortable");
         th.tabIndex = 0;
         th.setAttribute("role", "columnheader");
-        const sort = () => {
+        const sort = (forced) => {
           const rows = dataRows();
           const sample = rows.length ? cellText(rows[0].cells[i]) : "";
           const numeric = asNumber(sample) !== null || /^\d{4}-\d\d-\d\d/.test(sample);
           const now = th.getAttribute("aria-sort");
-          const dir = now ? (now === "ascending" ? "descending" : "ascending") : (numeric ? "descending" : "ascending");
+          const dir = forced || (now ? (now === "ascending" ? "descending" : "ascending") : (numeric ? "descending" : "ascending"));
           heads.forEach((h) => h.removeAttribute("aria-sort"));
           th.setAttribute("aria-sort", dir);
           rows.sort((a, b) => {
@@ -160,9 +168,12 @@
             return dir === "ascending" ? r : -r;
           });
           rows.forEach((r) => body.appendChild(r));
+          if (!forced) keep.set(key, { col: th.textContent.trim(), dir });
         };
-        th.addEventListener("click", sort);
+        th.addEventListener("click", () => sort());
         th.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); sort(); } });
+        const saved = keep.get(key);
+        if (saved && saved.col === th.textContent.trim() && (saved.dir === "ascending" || saved.dir === "descending")) sort(saved.dir);
       });
 
       if (table.classList.contains("nosearch") || dataRows().length < 8) return;
@@ -185,6 +196,57 @@
         });
         count.textContent = words.length ? shown + " of " + rows.length : "";
       });
+    });
+  }
+
+  /* ---- Columns menu: choose which columns a table shows, remembered in this browser ---- */
+  function columns(root) {
+    $$("details.colmenu[data-cols]", root || document).forEach((menu) => {
+      const table = document.getElementById(menu.dataset.cols);
+      if (!table) return;
+      const key = "cols:" + menu.dataset.cols;
+      const hidden = new Set(keep.get(key) || []);
+      const apply = () => $$("input[type=checkbox]", menu).forEach((box) => {
+        box.checked = !hidden.has(box.value);
+        table.classList.toggle("hide-" + box.value, hidden.has(box.value));
+      });
+      apply();
+      menu.addEventListener("change", (e) => {
+        if (!e.target.matches("input[type=checkbox]")) return;
+        e.target.checked ? hidden.delete(e.target.value) : hidden.add(e.target.value);
+        keep.set(key, [...hidden]);
+        apply();
+      });
+    });
+  }
+
+  /* ---- search boxes that ask the server (Transactions, Payees): results update as you type ---- */
+  function liveSearch() {
+    $$("form.searchbar[data-live]").forEach((form) => {
+      const input = form.querySelector("input[type=search]");
+      const target = document.querySelector(form.dataset.live);
+      if (!input || !target) return;
+      let timer = null, ctrl = null;
+      const run = async () => {
+        const url = new URL(form.action, location.href);
+        new FormData(form).forEach((v, k) => { if (v !== "") url.searchParams.set(k, v); });
+        if (ctrl) ctrl.abort();
+        ctrl = new AbortController();
+        try {
+          const res = await fetch(url, { signal: ctrl.signal, headers: { "X-Live": "1" } });
+          if (!res.ok) return;
+          const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+          const fresh = doc.querySelector(form.dataset.live);
+          if (!fresh) return;
+          target.replaceChildren(...[...fresh.childNodes].map((n) => document.importNode(n, true)));
+          const head = doc.querySelector(".pagehead"), here = document.querySelector(".pagehead");
+          if (head && here) here.replaceChildren(...[...head.childNodes].map((n) => document.importNode(n, true)));
+          history.replaceState(null, "", url.pathname + url.search);
+          tables(target); columns(target);
+        } catch (e) { /* aborted or offline: the Search button still works */ }
+      };
+      input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(run, 300); });
+      form.addEventListener("submit", (e) => { e.preventDefault(); clearTimeout(timer); run(); });
     });
   }
 
@@ -251,7 +313,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm();
+    sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns();
     tidyAddress();
     restoreScroll();
   });

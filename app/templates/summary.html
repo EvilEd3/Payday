@@ -47,14 +47,31 @@
   <ul class="chartkey">
     <li><span class="key-d2d" aria-hidden="true"></span> Day to day</li>
     <li><span class="key-bills" aria-hidden="true"></span> Bills</li>
-    {% if day_rate is not none %}<li><span class="key-trend" aria-hidden="true"></span> Day rate: what you could spend each day, recalculated after each day’s spending.
-      {% if c.offset == 0 %}Now <strong class="{{ 'neg' if day_rate < 0 }}">{{ day_rate|money }}</strong> a day{% if day_rate < 0 %}; the line sits on the floor while you’re over budget{% endif %}.
-      {% else %}The period finished <strong class="{{ 'pos' if dash.budget_left >= 0 else 'neg' }}">{{ dash.budget_left|abs|money }} {{ 'under' if dash.budget_left >= 0 else 'over' }} budget</strong>.{% endif %}</li>{% endif %}
     {% if dash.planned_per_day > 0 %}<li><span class="key-target" aria-hidden="true"></span> Where you started: {{ dash.planned_per_day|money }} a day.</li>{% endif %}
     {% if c.pending_count %}<li><span class="key-pending" aria-hidden="true"></span> Not settled yet: {{ c.pending_total|money }}, shown on the day you made the purchase.</li>{% endif %}
   </ul>
   <div class="panel">{{ daily_chart }}</div>
 </section>
+
+{% if rate_chart %}
+<section class="section" id="day-rate">
+  <div class="sechead">
+    <h2>Day rate</h2>
+    <form method="post" action="/summary/warning" class="inline-form admin-only">
+      <input type="hidden" name="offset" value="{{ c.offset }}">
+      <label>Warn me below <span class="money-in"><span>$</span><input name="amount" inputmode="decimal" size="5" value="{{ '%g'|format(warn) if warn else '' }}" placeholder="off" aria-label="Warning amount a day"></span> a day</label>
+      <button class="quiet small">Save</button>
+    </form>
+  </div>
+  <ul class="chartkey">
+    <li>What you could spend each day for the rest of the period, worked out after each day’s spending.
+      {% if c.offset == 0 %}Today <strong class="{{ 'neg' if day_rate < 0 or (warn and day_rate < warn) }}">{{ day_rate|money }}</strong> a day.
+      {% else %}The period finished <strong class="{{ 'pos' if dash.budget_left >= 0 else 'neg' }}">{{ dash.budget_left|abs|money }} {{ 'under' if dash.budget_left >= 0 else 'over' }} budget</strong>.{% endif %}</li>
+    {% if warn %}<li><span class="key-warn" aria-hidden="true"></span> Warning line: {{ warn|money }} a day. Days below it are red.</li>{% endif %}
+  </ul>
+  <div class="panel">{{ rate_chart }}</div>
+</section>
+{% endif %}
 
 {% if c.offset == 0 %}
 <section class="section">
@@ -78,10 +95,10 @@
 </section>
 {% endif %}
 
-<div class="grid2 section">
+<div class="grid2 two section">
   <section>
     <h2>Top payees</h2>
-    <div class="panel" style="margin-top:.75rem"><table class="nosearch">
+    <div class="panel flush"><table class="nosearch">
       <thead><tr><th>Payee</th><th class="num">Visits</th><th class="num">Spent</th></tr></thead>
       <tbody>
       {% for g in c.payees %}
@@ -91,16 +108,42 @@
     </table></div>
   </section>
   <section>
+    <h2>Tags</h2>
+    <div class="panel flush"><table class="nosearch">
+      <thead><tr><th>Tag</th><th class="num">Items</th><th class="num">Spent</th></tr></thead>
+      <tbody>
+      {% for tag, amt, n in c.tags[:8] %}
+      <tr><td><a href="/transactions?tag={{ tag|urlencode }}">#{{ tag }}</a></td><td class="num">{{ n }}</td><td class="num">{{ amt|money }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">No tagged spending this period. Add tags to a transaction from its ⋯ menu.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+  <section>
     <h2>Categories against your limits</h2>
-    <div class="panel" style="margin-top:.75rem"><table class="nosearch">
+    <div class="panel flush"><table class="nosearch">
       <thead><tr><th>Category</th><th class="num">Spent</th><th class="num">Of limit</th><th class="num">Change</th></tr></thead>
       <tbody>
-      {% for name, amt, cid in c.categories[:10] %}
+      {% for name, amt, cid in c.categories[:8] %}
       {% set lim = limits.get(cid) %}
       <tr><td><a href="/transactions?category={{ cid }}{{ o }}">{{ name }}</a></td><td class="num">{{ amt|money }}</td>
           <td class="num" data-sort="{{ (amt / lim.limit) if lim else 0 }}">{% if lim %}<span class="{{ 'neg' if amt > lim.limit else ('due' if amt >= lim.limit * 0.8 else '') }}">{{ (amt / lim.limit * 100)|round|int }}%</span>{% else %}<span class="muted">–</span>{% endif %}</td>
           <td class="num">{% set v = cat_change[name] %}{% if v is none %}<span class="muted">new</span>{% else %}<span class="{{ 'pos' if v <= 0 else 'neg' }}">{{ v|pct }}</span>{% endif %}</td></tr>
       {% else %}<tr><td colspan="4" class="muted">No spending yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+  <section>
+    <h2>Bills and subscriptions</h2>
+    <div class="panel flush"><table class="nosearch">
+      <thead><tr><th>Bill</th><th>Status</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+      {% for p in dash.paid %}
+      <tr><td><a href="/bills/{{ p.bill.id }}">{{ p.bill.name }}</a></td><td class="muted" data-sort="{{ p.txn.date.isoformat() }}">{{ 'Pending' if p.pending else 'Paid' }} {{ p.txn.date|nice }}</td><td class="num">{{ (-p.txn.amount)|money }}</td></tr>
+      {% endfor %}
+      {% for u in dash.upcoming %}
+      <tr><td><a href="/bills/{{ u.bill.id }}">{{ u.bill.name }}</a></td><td data-sort="{{ u.due.isoformat() }}" class="{{ 'neg' if u.overdue else 'due' }}">{{ 'Not seen, was due' if u.overdue else 'Due' }} {{ u.due|nice }}</td><td class="num">{{ u.bill.amount|money }}</td></tr>
+      {% endfor %}
+      {% if not dash.paid and not dash.upcoming %}<tr><td colspan="3" class="muted">No bills due this period. <a href="/bills">Add your bills</a>.</td></tr>{% endif %}
       </tbody>
     </table></div>
   </section>
