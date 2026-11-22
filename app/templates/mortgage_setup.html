@@ -4,7 +4,7 @@
 {% set notes = {'saved': 'Saved.', 'deleted': 'Removed.', 'cleared': 'Imported repayments removed.',
   'imported': 'Loaded ' ~ count ~ ' repayments from your spreadsheet, with its rates and property values.'} %}
 {% set bad = {'badimport': 'That file didn’t have any repayments Payday could read. Download the sheet as CSV (File → Download → Comma-separated values) and try again.',
-  'badrate': 'Enter a date and a rate like 5.49.', 'badvalue': 'Enter a date and a value above zero.'} %}
+  'badrate': 'Enter a date and a rate like 6.25.', 'badvalue': 'Enter a date and a value above zero.'} %}
 <p class="small">{% if loan %}<a href="/mortgage">{{ loan.name }}</a>{% else %}<a href="/">Overview</a>{% endif %}</p>
 <div class="pagehead"><div>
   <h1>Mortgage setup</h1>
@@ -76,7 +76,7 @@
     </tbody></table>
     <form class="admin-only fields" method="post" action="/mortgage/rates" style="padding:1rem 1.1rem;border-top:1px solid var(--line)">
       <label>From <input type="date" name="effective" required></label>
-      <label>Rate % p.a. <input name="rate" inputmode="decimal" placeholder="5.49" required></label>
+      <label>Rate % p.a. <input name="rate" inputmode="decimal" placeholder="6.25" required></label>
       <label>Note <input name="note" placeholder="2 year fixed"></label>
       <div><button class="quiet">Add rate</button></div>
     </form>

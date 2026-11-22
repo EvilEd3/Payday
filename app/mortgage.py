@@ -275,7 +275,7 @@ def _date(v: str) -> date | None:
 
 
 def parse_tracker(text: str) -> dict:
-    """Read the Mortgage Tracker spreadsheet (downloaded as CSV): loan details, rate history and actual repayments.
+    """Read a mortgage tracker spreadsheet (downloaded as CSV): loan details, rate history and actual repayments.
     Forecast rows are skipped; Payday makes its own."""
     rows = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
     out = {"details": {}, "rates": [], "entries": [], "values": []}
