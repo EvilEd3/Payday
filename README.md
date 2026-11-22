@@ -8,19 +8,31 @@ and divides what's left by the days until you're paid again.
 
 ![Overview](docs/screenshots/overview.png)
 
-- **Pay-cycle budget**: income, every bill due before payday, and spending so far, as a daily amount.
-- **Bills** that match their payments automatically, including pending ones; weekend due dates move to Monday.
-- **Categories and rules** that learn from you, a review list for guesses, limits per category.
-- **Summary** with daily spending (bills stacked), category and payee breakdowns, subscriptions found for you.
+- **Pay-cycle budget**: income, every bill due before payday, goals you're budgeting for, and spending so far, as a
+  daily amount. Monthly, fortnightly, weekly or calendar-month pay.
+- **Bills** that match their payments automatically, including pending ones; suggested from your transactions;
+  weekend due dates move to Monday.
+- **Goals**: a target and a date, tracked from a linked savings account or amounts you add. Shows what's needed each
+  pay, week and day, whether you're on track, and when you'll get there. Tick "Budget for this" to set the money aside
+  from each pay like a bill.
+- **Summary**: income, spending and what you kept; categories, payees and tags; bills paid and to come; daily spending
+  with bills stacked; and a day-rate chart with a warning line that also flags the Overview.
+- **Transactions**: search as you type, notes and tags on every line, choose your columns, rules that learn from you,
+  and a review list for Payday's guesses.
 - **Account reconciling** with running balances that match your banking app.
 - **Mortgage** tracker: history import, forecasts, extra-repayment and refix what-ifs, equity and milestones.
 - **Households**: invite your partner (admin or read only); one login can belong to several households.
 - **Secure by default**: two-step sign-in for everyone, encrypted bank tokens, backups you can lock with a passphrase.
-- Light and dark themes, works on phones, installs as an app.
+- Light and dark themes in five colour schemes, a badge of your own, works on phones, installs as an app.
 
 | | |
 |---|---|
-| ![Mortgage](docs/screenshots/mortgage.png) | ![Phone](docs/screenshots/phone.png) |
+| ![Summary](docs/screenshots/summary.png) | ![Goals](docs/screenshots/goals.png) |
+| ![Transactions](docs/screenshots/transactions.png) | ![Mortgage](docs/screenshots/mortgage.png) |
+
+| | |
+|---|---|
+| ![Phone, light](docs/screenshots/phone.png) | ![Phone, dark](docs/screenshots/phone-dark.png) |
 
 Screenshots show a made-up household.
 
@@ -28,9 +40,20 @@ Screenshots show a made-up household.
 
 You need Docker and an Akahu account.
 
+Using the published image (recommended):
+
+```sh
+mkdir payday && cd payday
+curl -O https://raw.githubusercontent.com/EvilEd3/Payday/main/docker-compose.release.yml
+curl -o .env https://raw.githubusercontent.com/EvilEd3/Payday/main/.env.example   # set PUBLIC_URL if reached from outside
+docker compose -f docker-compose.release.yml up -d
+```
+
+Or from source:
+
 ```sh
 git clone https://github.com/EvilEd3/Payday.git payday && cd payday
-cp .env.example .env        # set PUBLIC_URL if you'll reach it from outside your home network
+cp .env.example .env
 docker compose up -d --build
 ```
 
@@ -71,7 +94,10 @@ check the policies first.
 
 - **Settings → Backup and export**: a backup of your household (optionally passphrase-locked) and CSV files.
 - Also back up the `data` folder (the database and `payday.key`) while Payday is stopped.
-- To update: `git pull && docker compose up -d --build`. Database changes are applied on start.
+- To update the published image: `docker compose -f docker-compose.release.yml pull && docker compose -f docker-compose.release.yml up -d`.
+  From source: `git pull && docker compose up -d --build`. Database changes are applied on start.
+- Releases and what changed: [Releases](https://github.com/EvilEd3/Payday/releases) and [CHANGELOG.md](CHANGELOG.md).
+  `latest` is the newest release; pin a version (e.g. `ghcr.io/eviled3/payday:1.0.0`) to update only when you choose.
 - Move from SQLite to PostgreSQL: `docker compose run --rm -e DATABASE_URL=postgresql://… payday python -m app.admin move-to-postgres /data`
 
 ## Security

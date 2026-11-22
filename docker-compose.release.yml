@@ -1,0 +1,12 @@
+# Runs the published image instead of building from source.
+# Update with: docker compose -f docker-compose.release.yml pull && docker compose -f docker-compose.release.yml up -d
+services:
+  payday:
+    image: ghcr.io/eviled3/payday:latest
+    container_name: payday
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data

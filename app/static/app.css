@@ -822,7 +822,7 @@ details.colmenu .pop p { margin: 0 0 .1rem; }
 .goalnums strong { font-size: 1.25rem; }
 .goalstats { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: .6rem 1rem; margin: 0; padding: .75rem 0 0; border-top: 1px solid var(--line); }
 .goalstats dt { font-size: .75rem; color: var(--muted); }
-.goalstats dd { margin: .1rem 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.goalstats dd { margin: .1rem 0 0; font-weight: 650; }
 .goalnote { margin: 0; }
 .goalactions { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .goalactions details.more { margin-left: auto; }
@@ -837,3 +837,4 @@ details.colmenu .pop p { margin: 0 0 .1rem; }
 .money-in input, .money-in input:focus { border: 0 !important; box-shadow: none !important; outline: 0; border-radius: 0 8px 8px 0; }
 .money-in > span { color: var(--muted); }
 .goalstats dd, .goalstats dd .m { font-family: inherit; letter-spacing: 0; }
+.sitefoot .ver { color: var(--muted); margin-left: auto; }

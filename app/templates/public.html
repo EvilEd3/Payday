@@ -26,7 +26,7 @@
 </header>
 <main class="{% block mainclass %}prose-page{% endblock %}">{% block content %}{% endblock %}</main>
 <footer class="sitefoot">
-  <nav aria-label="About"><a href="/help">Help</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/legal/security">Security</a><a href="/contact">Contact</a></nav>
+  <nav aria-label="About"><a href="/help">Help</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/legal/security">Security</a><a href="/contact">Contact</a><span class="ver">Payday {{ version }}</span></nav>
   <p>{{ info.legal_name }}{% if info.nzbn %} · NZBN {{ info.nzbn }}{% endif %}</p>
 </footer>
 </body>

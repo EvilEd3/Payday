@@ -90,6 +90,8 @@ def asset(name: str) -> str:
 
 
 templates.env.globals["asset"] = asset
+from .version import __version__  # noqa: E402
+templates.env.globals["version"] = __version__
 
 
 def today() -> date:
