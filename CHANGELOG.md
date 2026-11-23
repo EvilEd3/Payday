@@ -6,6 +6,11 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Sync now asks your bank for the latest** through Akahu's refresh, waiting up to a minute for the banks to answer.
+  Scheduled syncs still use Akahu's own daily refresh.
+- **Bank data age** on each account (Settings, Accounts) and in the Overview status line, with a heads-up when a bank
+  hasn't sent new data for over 30 hours or its connection needs attention.
+
 ## 1.0.0
 
 First public release.

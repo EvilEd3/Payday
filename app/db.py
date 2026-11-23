@@ -174,6 +174,9 @@ class Account(SQLModel, table=True):
     opening_balance: Optional[float] = None  # if set, balance = this + transactions since opening_date
     opening_date: Optional[Date] = None
     updated_at: Optional[datetime] = None
+    bank_status: str = ""  # Akahu's ACTIVE / INACTIVE for the bank connection
+    refreshed_txns: str = ""  # when Akahu last fetched this account's transactions from the bank (ISO, UTC)
+    refreshed_balance: str = ""  # ... and its balance
 
 
 class Category(SQLModel, table=True):
@@ -410,7 +413,9 @@ NEW_COLUMNS = {  # added to profile databases after the first release
     "user": [("theme", "VARCHAR NOT NULL DEFAULT 'bush'"), ("mode", "VARCHAR NOT NULL DEFAULT 'auto'")],
     "account": [("count_spending", "BOOLEAN NOT NULL DEFAULT 1"), ("opening_balance", "FLOAT"),
                 ("opening_date", "DATE"), ("balance_limit", "FLOAT"), ("bank_name", "VARCHAR NOT NULL DEFAULT ''"),
-                ("nickname", "VARCHAR NOT NULL DEFAULT ''"), ("meta", "VARCHAR NOT NULL DEFAULT ''")],
+                ("nickname", "VARCHAR NOT NULL DEFAULT ''"), ("meta", "VARCHAR NOT NULL DEFAULT ''"),
+                ("bank_status", "VARCHAR NOT NULL DEFAULT ''"), ("refreshed_txns", "VARCHAR NOT NULL DEFAULT ''"),
+                ("refreshed_balance", "VARCHAR NOT NULL DEFAULT ''")],
     "category": [("limit_mode", "VARCHAR NOT NULL DEFAULT 'auto'"), ("limit_amount", "FLOAT")],
     "rule": [("direction", "VARCHAR NOT NULL DEFAULT 'any'"), ("min_amount", "FLOAT"),
              ("max_amount", "FLOAT"), ("account_id", "VARCHAR")],

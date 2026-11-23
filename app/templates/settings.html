@@ -111,6 +111,7 @@
     <div class="grow">
       <div class="title"><a href="/accounts/{{ a.id }}">{{ a.name }}</a></div>
       <div class="muted small">{% if a.nickname and a.bank_name and a.bank_name != a.nickname %}{{ a.bank_name }}, {% endif %}{{ a.institution }}{{ ', ' if a.institution and a.type }}{{ a.type|acctype }}</div>
+      <div class="small {{ 'neg' if a is stale else 'muted' }}">{% if a.bank_status and a.bank_status != 'ACTIVE' %}The bank connection needs attention at my.akahu.nz{% else %}Bank data from {{ a.refreshed_txns|freshness }}{% endif %}</div>
       <div style="margin-top:.35rem"><span class="acct-bal {{ 'neg' if balances[a.id] < 0 }}">{{ balances[a.id]|money }}</span>
         <span class="muted small">{% if a.opening_balance is not none %}from your opening balance. The bank says {{ bank[a.id]|money }}{% elif a.type in ('CREDITCARD', 'LOAN') %}owed, from the bank{% else %}from the bank{% if a.balance_limit and a.balance_available is not none and a.balance_available > a.balance_current %}, not counting your {{ a.balance_limit|money }} overdraft{% endif %}{% endif %}</span></div>
     </div>

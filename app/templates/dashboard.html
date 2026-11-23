@@ -18,6 +18,15 @@
 </a>
 {% endif %}
 
+{% set stale = d.all_accounts|select('stale')|list %}
+{% if stale and not d.is_past %}
+<a class="notice warnnote" href="/settings?tab=accounts">
+  <span><strong>{{ stale|map(attribute='institution')|unique|join(' and ') or 'A bank' }} last sent new data {{ (stale|map(attribute='refreshed_txns')|min)|freshness }}.</strong>
+    Figures may be out of date. Press Sync now to ask again, or check the connection at my.akahu.nz.</span>
+  <span class="btn quiet small">Details</span>
+</a>
+{% endif %}
+
 {# ---------- the pay card: what's left of this pay, per day ---------- #}
 {% set base = [d.income, d.bills_total + d.day_to_day]|max %}
 <section class="paycard" aria-labelledby="headline">
@@ -168,7 +177,7 @@
       {% for a in d.all_accounts %}
       {% set bal = d.balances[a.id] %}
       <li class="{{ '' if a.in_budget else 'off' }}">
-        <a href="/accounts/{{ a.id }}">{{ a.name }}<small>{{ a.institution }}{% if not a.in_budget %}{{ ', ' if a.institution }}not counted{% endif %}</small></a>
+        <a href="/accounts/{{ a.id }}">{{ a.name }}<small>{{ a.institution }}{% if not a.in_budget %}{{ ', ' if a.institution }}not counted{% endif %}{% if a is stale %}<span class="neg">{{ ', ' if a.institution or not a.in_budget }}bank data from {{ a.refreshed_txns|freshness }}</span>{% endif %}</small></a>
         <span class="amt {{ 'neg' if bal < 0 }}">{{ bal|money }}</span>
       </li>
       {% else %}
@@ -201,7 +210,8 @@
 </div>
 
 <div class="statusline">
-  <span>{% if d.last_sync %}Synced {{ d.last_sync }}. {{ d.last_sync_status }}{% else %}Not synced with your bank yet.{% endif %}
+  {% set fresh = d.all_accounts|selectattr('refreshed_txns')|map(attribute='refreshed_txns')|list %}
+  <span>{% if d.last_sync %}Synced {{ d.last_sync }}{% if fresh %}, bank data from {{ (fresh|min)|freshness }}{% endif %}. {{ d.last_sync_status }}{% else %}Not synced with your bank yet.{% endif %}
     <button type="button" class="linkish" data-sync-show>Details</button></span>
   <form class="admin-only" method="post" action="/sync"><button class="quiet small" data-sync-start>Sync now</button></form>
 </div>

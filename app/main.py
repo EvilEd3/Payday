@@ -63,6 +63,40 @@ def is_private() -> bool:
 
 templates.env.filters["money"] = money
 templates.env.filters["nice"] = lambda d: d.strftime("%a %-d %b")
+STALE_HOURS = 30  # Akahu refreshes about once a day; older than this means something's stuck
+
+
+def _refreshed(iso: str):
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def bank_freshness(iso: str) -> str:
+    """When the bank last sent this account's transactions to Akahu, in words."""
+    when = _refreshed(iso)
+    if not when:
+        return "not refreshed yet"
+    local, now = when.astimezone(TZ), datetime.now(TZ)
+    clock = local.strftime("%-I:%M %p").lower()
+    days = (now.date() - local.date()).days
+    if days == 0:
+        return f"today {clock}"
+    if days == 1:
+        return f"yesterday {clock}"
+    return f"{days} days ago ({local.strftime('%a %-d %b')})"
+
+
+def bank_stale(account) -> bool:
+    if account.bank_status and account.bank_status != "ACTIVE":
+        return True
+    when = _refreshed(account.refreshed_txns)
+    return bool(when) and (datetime.now(timezone.utc) - when).total_seconds() > STALE_HOURS * 3600
+
+
+templates.env.filters["freshness"] = bank_freshness
+templates.env.tests["stale"] = bank_stale
 templates.env.filters["short"] = lambda d: d.strftime("%-d %b")
 templates.env.filters["long"] = lambda d: d.strftime("%A %-d %B")
 templates.env.filters["my"] = lambda d: d.strftime("%b %Y") if d else "–"

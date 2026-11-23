@@ -1,4 +1,5 @@
 import json
+import time
 import os
 import threading
 from datetime import datetime, timedelta, timezone
@@ -227,6 +228,42 @@ def _replace_stale(s: Session, stale: list[Transaction], added: list[Transaction
     return moved
 
 
+REFRESH_WAIT = 60  # seconds to wait for the banks to answer a refresh before carrying on
+
+
+def _ask_for_fresh_data(client: httpx.Client, accounts: list[dict], progress) -> list[dict]:
+    """Ask Akahu to fetch from the banks now, then wait a little for the answers.
+
+    Akahu ignores the ask if an account was refreshed in the last 15 minutes, and otherwise
+    collects data on its own about once a day, so this only runs when someone presses Sync now.
+    """
+    progress.step("Asking your bank for the latest")
+    before = {a["_id"]: (a.get("refreshed") or {}).get("transactions") or "" for a in accounts
+              if a.get("status", "ACTIVE") == "ACTIVE"}
+    try:
+        client.post("/refresh").raise_for_status()
+    except httpx.HTTPError as e:
+        progress.detail(f"Akahu didn't take the request ({_explain(e)}) Using what it already has.")
+        return accounts
+    deadline = time.monotonic() + REFRESH_WAIT
+    latest = accounts
+    while time.monotonic() < deadline:
+        time.sleep(5)
+        try:
+            latest = _get_all(client, "/accounts")
+        except httpx.HTTPError:
+            break
+        now = {a["_id"]: (a.get("refreshed") or {}).get("transactions") or "" for a in latest}
+        done = [k for k, v in before.items() if now.get(k, "") != v]
+        progress.detail(f"{len(done)} of {len(before)} account{'s' if len(before) != 1 else ''} updated by the bank")
+        if len(done) == len(before):
+            break
+    else:
+        progress.detail("Some banks hadn't answered yet; their new data comes in with the next sync. "
+                        "Akahu also skips accounts it refreshed in the last 15 minutes.")
+    return latest
+
+
 def sync(trigger: str = "scheduled") -> str:
     lock, progress = _lock_for(current_profile_id()), progress_for()
     if not lock.acquire(blocking=False):
@@ -236,6 +273,8 @@ def sync(trigger: str = "scheduled") -> str:
         with httpx.Client(headers=_headers(), timeout=60) as client, Session(current_engine()) as s:
             progress.step("Contacting Akahu")
             raw_accounts = _get_all(client, "/accounts")
+            if trigger == "manual":
+                raw_accounts = _ask_for_fresh_data(client, raw_accounts, progress)
 
             progress.step("Updating accounts")
             for a in raw_accounts:
@@ -254,6 +293,10 @@ def sync(trigger: str = "scheduled") -> str:
                 acc.balance_available = bal.get("available")
                 acc.balance_limit = bal.get("limit")
                 acc.updated_at = datetime.now(timezone.utc)
+                acc.bank_status = a.get("status", "") or ""
+                fresh = a.get("refreshed") or {}
+                acc.refreshed_txns = fresh.get("transactions") or acc.refreshed_txns or ""
+                acc.refreshed_balance = fresh.get("balance") or acc.refreshed_balance or ""
                 s.add(acc)
             s.commit()
             progress.detail(f"{len(raw_accounts)} account{'s' if len(raw_accounts) != 1 else ''} and balances updated")
