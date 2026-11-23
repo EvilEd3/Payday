@@ -6,6 +6,8 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+## 1.1.0
+
 **Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set
 `PUBLIC_URL` to that https address, or password-reset and email-check links won't be sent. If that proxy isn't on the
 same machine or your local network, also set `TRUSTED_PROXIES` to its address.
