@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,10 +12,28 @@ permissions:
   packages: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -r requirements.txt pytest==8.4.2 pip-audit==2.9.0
+      - name: Tests
+        run: python -m pytest -q tests
+      - name: Known vulnerabilities in dependencies
+        run: pip-audit -r requirements.txt --no-deps --progress-spinner off
+
   build:
+    needs: test
+    if: github.event_name != 'pull_request'  # pull requests are tested, not published
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Check the code compiles
         run: python -m compileall -q app
       - name: Check the tag matches app/version.py
@@ -23,15 +42,15 @@ jobs:
           want="${GITHUB_REF_NAME#v}"
           have=$(python -c "import re;print(re.search(r'\"(.+)\"', open('app/version.py').read()).group(1))")
           [ "$want" = "$have" ] || { echo "Tag $GITHUB_REF_NAME but app/version.py says $have"; exit 1; }
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/payday
           tags: |
@@ -40,7 +59,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,format=short
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -55,12 +74,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Take this version's notes from CHANGELOG.md
         run: |
           v="${GITHUB_REF_NAME#v}"
           awk -v v="$v" '$0 ~ "^## " {on = ($2 == v)} on' CHANGELOG.md | tail -n +2 > notes.md
           printf '\n**Docker image:** `ghcr.io/%s/payday:%s`\n' "${GITHUB_REPOSITORY_OWNER,,}" "$v" >> notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           body_path: notes.md
