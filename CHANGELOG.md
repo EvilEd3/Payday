@@ -6,6 +6,12 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Notifications** on your phone or computer (Settings, Notifications), chosen per person and per household:
+  bills coming up or missed, pay landed, day rate under your warning line, category limits, big purchases, sync
+  problems, stale bank data, the last pay's result, a weekly summary, goals reached and transactions to check.
+  Quiet hours hold alerts until morning. Uses standard web push, so no extra app is needed; iPhone needs Payday
+  added to the home screen, and notifications need your https address.
+
 - **Sync now asks your bank for the latest** through Akahu's refresh, waiting up to a minute for the banks to answer.
   Scheduled syncs still use Akahu's own daily refresh.
 - **Bank data age** on the Overview pay card (top right), on each account (Settings, Accounts) and in the status line, with a heads-up when a bank

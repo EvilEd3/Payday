@@ -12,3 +12,26 @@ self.addEventListener("fetch", (event) => {
       { headers: { "Content-Type": "text/html; charset=utf-8" } }))
   );
 });
+
+// Notifications: show what Payday sends, and open the right page when one is tapped.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(data.title || "Payday", {
+    body: data.body || "",
+    tag: data.tag || undefined,
+    icon: "/static/icon-192.png",
+    badge: "/static/icon-192.png",
+    data: { url: data.url || "/" },
+  }));
+});
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data && event.notification.data.url || "/", self.location.origin).href;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    for (const w of wins) {
+      if (new URL(w.url).origin === self.location.origin && "navigate" in w) return w.navigate(target).then((c) => c && c.focus());
+    }
+    return self.clients.openWindow(target);
+  }));
+});

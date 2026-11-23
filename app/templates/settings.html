@@ -3,12 +3,14 @@
 {% block title %}Settings · Payday{% endblock %}
 {% block content %}
 {% set me = request.state.user %}
-{% set notes = {'saved': 'Saved.', 'deleted': 'Removed.', 'pw': 'Password changed. Your other devices have been signed out.',
+{% set notes = {'saved': 'Saved.', 'pushtest': 'Test sent. It should appear on your devices within a few seconds.',
+  'devremoved': 'Device removed. It won’t get Payday notifications any more.', 'deleted': 'Removed.', 'pw': 'Password changed. Your other devices have been signed out.',
   'renamed': 'Renamed.', 'merged': 'Merged.', 'invited': 'Invite link made.',
   'restored': 'Restored from the backup. Connect your bank again under Bank connection.', 'tokens': 'Saved.',
   'tested': 'Connection works.', 'forgot': 'Bank disconnected.', 'connected': 'Bank connected. The first sync has started.',
   'emailsent': 'We’ve sent a link to your new email address. Open it to confirm.'} %}
 {% set problems = {
+  'pushfail': 'The test didn’t reach any device. Turn notifications on again on the device you want them on.',
   'badpw': 'That password isn’t right.',
   'weakpw': 'Choose a stronger new password: at least 10 characters, not a common one, and not containing your username.',
   'exists': 'There’s already a category with that name.', 'builtin': 'Built-in categories can’t be renamed or merged away.',
@@ -353,6 +355,90 @@
     </div>
   </form>
 </section>
+
+{# ------------------------------------------------------------------ notifications #}
+{% elif tab == 'notify' %}
+{% set p = prefs %}
+{% macro sw(key, label, hint='') %}<label class="check notifysw"><input type="checkbox" name="{{ key }}" value="true" {% if p[key] %}checked{% endif %}> <span>{{ label }}{% if hint %}<small>{{ hint }}</small>{% endif %}</span></label>{% endmacro %}
+<p class="lede">Alerts on your phone or computer, just for you. {% if request.state.profiles|length > 1 %}These choices are for {{ request.state.profile.name }}; each household has its own.{% endif %}</p>
+
+<section>
+  <h2>Your devices</h2>
+  <div class="panel" style="margin-top:.75rem" data-push data-key="{{ vapid }}">
+    {% if devices %}
+    <ul class="devices">
+      {% for dv in devices %}
+      <li><span><strong>{{ dv.label or 'Device' }}</strong><small class="muted">Turned on {{ dv.created|nice if dv.created else '' }}{% if dv.last_sent %}, last alert {{ dv.last_sent|nice }}{% endif %}</small></span>
+        <form method="post" action="/me/push/remove"><input type="hidden" name="device" value="{{ dv.id }}"><button class="quiet small">Remove</button></form></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted" style="margin-top:0">No devices yet. Turn notifications on from each phone or computer you want them on.</p>
+    {% endif %}
+    <div class="actions" style="margin-top:.75rem">
+      <button type="button" data-push-on>Turn on for this device</button>
+      {% if devices %}<form method="post" action="/me/push/test"><button class="quiet">Send a test</button></form>{% endif %}
+    </div>
+    <p class="small" data-push-msg role="status" aria-live="polite" hidden></p>
+    <p class="small muted" data-push-ios hidden>On iPhone and iPad, first add Payday to your home screen: tap Share, then Add to Home Screen. Open Payday from there and turn notifications on.</p>
+    <p class="small muted" data-push-http hidden>Notifications only work over a secure (https) address. Open Payday through your https address, then turn them on.</p>
+  </div>
+</section>
+
+<form method="post" action="/me/notify">
+<div class="grid2 two section">
+  <section>
+    <h2>Bills and payday</h2>
+    <fieldset class="panel notifygroup">
+      <legend class="sr-only">Bills and payday</legend>
+      <div class="notifyrow">{{ sw('bill_due', 'A bill is coming up') }}
+        <label class="inline">Days before <input name="due_days" type="number" min="0" max="14" value="{{ p.due_days }}" class="tiny"></label></div>
+      {{ sw('bill_missed', 'A bill hasn’t been paid', 'Its due date has passed with no payment seen.') }}
+      {{ sw('payday', 'Your pay has landed', 'With what you can spend a day until the next one.') }}
+    </fieldset>
+  </section>
+  <section>
+    <h2>Spending</h2>
+    <fieldset class="panel notifygroup">
+      <legend class="sr-only">Spending</legend>
+      {{ sw('day_rate', 'Day rate drops below your warning line', ('Your line is ' ~ (warn|money) ~ ' a day.') if warn else 'Set the line on the Summary page, under Day rate.') }}
+      {{ sw('limit_over', 'A category goes over its limit') }}
+      {{ sw('limit_near', 'A category reaches 80% of its limit') }}
+      <div class="notifyrow">{{ sw('big', 'A purchase over') }}
+        <label class="inline"><span class="sr-only">Amount</span><span class="money-in"><span>$</span><input name="big_amount" inputmode="decimal" value="{{ p.big_amount }}" size="5"></span></label></div>
+    </fieldset>
+  </section>
+  <section>
+    <h2>Bank and sync</h2>
+    <fieldset class="panel notifygroup">
+      <legend class="sr-only">Bank and sync</legend>
+      {{ sw('sync_failed', 'A sync fails') }}
+      {{ sw('stale', 'A bank hasn’t sent new data for over 30 hours') }}
+    </fieldset>
+  </section>
+  <section>
+    <h2>Summaries and goals</h2>
+    <fieldset class="panel notifygroup">
+      <legend class="sr-only">Summaries and goals</legend>
+      {{ sw('period_end', 'How the last pay went', 'Sent the day after payday.') }}
+      {{ sw('weekly', 'Your week', 'Sunday evening: spending in the last 7 days.') }}
+      {{ sw('goal', 'A goal is reached') }}
+      {{ sw('review', 'Transactions to check', 'Once a day, when Payday has guessed some categories.') }}
+    </fieldset>
+  </section>
+</div>
+<section class="section">
+  <h2>Quiet hours</h2>
+  <div class="panel notifygroup" style="margin-top:.75rem">
+    <p class="muted" style="margin:0">Alerts that come up in this time wait until it ends.</p>
+    <div class="notifyrow start">
+      <label class="inline">From <select name="quiet_start">{% for h in range(24) %}<option value="{{ h }}" {% if p.quiet_start == h %}selected{% endif %}>{{ (h % 12 or 12) }}{{ ' am' if h < 12 else ' pm' }}</option>{% endfor %}</select></label>
+      <label class="inline">until <select name="quiet_end">{% for h in range(24) %}<option value="{{ h }}" {% if p.quiet_end == h %}selected{% endif %}>{{ (h % 12 or 12) }}{{ ' am' if h < 12 else ' pm' }}</option>{% endfor %}</select></label>
+    </div>
+  </div>
+</section>
+<p class="section"><button>Save notification choices</button></p>
+</form>
 
 {# ------------------------------------------------------------------ you #}
 {% else %}

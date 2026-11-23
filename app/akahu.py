@@ -82,6 +82,17 @@ def start_in_background(trigger: str = "manual", pid: int | None = None) -> bool
 def sync_profile(pid: int, trigger: str = "scheduled") -> str:
     """Sync one profile (used by the scheduler and background threads, which have no request).
     With PostgreSQL several copies of Payday may run; a database lock makes sure only one syncs a household."""
+    msg = _sync_locked(pid, trigger)
+    try:
+        from .notify import run_for_profile  # noqa: PLC0415 - notify needs the pages' helpers, loaded after this module
+        run_for_profile(pid)
+    except Exception:  # noqa: BLE001 - a notification problem must never look like a failed sync
+        import logging
+        logging.getLogger("payday.notify").exception("notifications after sync failed")
+    return msg
+
+
+def _sync_locked(pid: int, trigger: str) -> str:
     with use_profile(pid):
         if not PG:
             return sync(trigger)

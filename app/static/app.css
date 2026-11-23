@@ -890,3 +890,20 @@ main .narrow .fields:not(.one) { grid-template-columns: repeat(auto-fill, minmax
 .pc-fresh.late { opacity: 1; }
 .pc-fresh.late i { background: var(--flax); box-shadow: 0 0 0 2px color-mix(in srgb, var(--flax) 35%, transparent); }
 @media (max-width: 520px) { .pc-right { align-items: flex-start; margin-left: 0; text-align: left; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: space-between; } }
+
+/* Notifications */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.notifygroup { display: grid; gap: .85rem; margin: .75rem 0 0; border: 1px solid var(--line); min-width: 0; align-content: start; }
+.notifygroup .check { align-items: flex-start; }
+.notifysw > span { display: block; }
+.notifysw small { display: block; color: var(--muted); font-size: .8125rem; margin-top: .1rem; }
+.notifyrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
+.notifyrow label.inline { display: flex; align-items: center; gap: .5rem; margin: 0; font-size: .875rem; color: var(--muted); font-weight: 400; white-space: nowrap; }
+.notifyrow label.inline input, .notifyrow label.inline select { width: auto; }
+.notifyrow.start { justify-content: flex-start; }
+input.tiny { width: 4.5rem; }
+.devices { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.devices li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .6rem .8rem; background: var(--sunk); border-radius: 10px; }
+.devices li > span { display: grid; }
+.devices small { font-size: .8125rem; }
+[data-push-msg].bad { color: var(--rata); }

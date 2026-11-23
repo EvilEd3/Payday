@@ -290,6 +290,28 @@ class Membership(SQLModel, table=True):
     user_id: int = Field(index=True)
     profile_id: int = Field(index=True)
     role: str = "viewer"  # admin | viewer (read only)
+    notify: str = ""  # this person's alert choices for this household, as JSON (see app/notify.py)
+
+
+class PushDevice(SQLModel, table=True):
+    """A phone or browser that has said yes to notifications."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    endpoint: str = Field(unique=True)
+    p256dh: str
+    auth: str
+    label: str = ""  # e.g. "iPhone", "Chrome on Windows"
+    created: Optional[datetime] = None
+    last_sent: Optional[datetime] = None
+
+
+class NotifySent(SQLModel, table=True):
+    """One alert already sent, so it isn't sent again."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    profile_id: int
+    key: str = Field(index=True)
+    sent_at: Optional[datetime] = None
 
 
 class Invite(SQLModel, table=True):
@@ -423,7 +445,7 @@ NEW_COLUMNS = {  # added to profile databases after the first release
 
 
 SITE_TABLES = [User.__table__, Profile.__table__, Membership.__table__, Invite.__table__,
-               SiteSetting.__table__, HeldUpload.__table__]
+               SiteSetting.__table__, PushDevice.__table__, NotifySent.__table__, HeldUpload.__table__]
 PROFILE_TABLES = [t for t in SQLModel.metadata.sorted_tables if t not in SITE_TABLES]
 SITE_COLUMNS = {
     "user": [("is_owner", "BOOLEAN NOT NULL DEFAULT 0"), ("totp_secret", "VARCHAR NOT NULL DEFAULT ''"),
@@ -432,6 +454,7 @@ SITE_COLUMNS = {
              ("email_verified", "BOOLEAN NOT NULL DEFAULT 0"), ("status", "VARCHAR NOT NULL DEFAULT 'active'"),
              ("terms_accepted_at", "TIMESTAMP"), ("signup_household", "VARCHAR NOT NULL DEFAULT ''"),
              ("badge_emoji", "VARCHAR NOT NULL DEFAULT ''"), ("badge_colour", "VARCHAR NOT NULL DEFAULT ''")],
+    "membership": [("notify", "VARCHAR NOT NULL DEFAULT ''")],
 }
 
 

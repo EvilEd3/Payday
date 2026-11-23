@@ -2,6 +2,7 @@
 (() => {
   "use strict";
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const $ = (sel, root = document) => root.querySelector(sel);
   const store = {
     get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} },
@@ -271,6 +272,53 @@
     });
   }
 
+  /* ---- turn on notifications for this device ---- */
+  function pushSetup() {
+    const box = $("[data-push]");
+    if (!box) return;
+    const btn = $("[data-push-on]", box), msg = $("[data-push-msg]", box);
+    const say = (text, bad) => { msg.hidden = false; msg.textContent = text; msg.classList.toggle("bad", !!bad); };
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const installed = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+    if (!window.isSecureContext) { $("[data-push-http]", box).hidden = false; btn.disabled = true; return; }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      if (ios && !installed) $("[data-push-ios]", box).hidden = false;
+      else say("This browser can’t show notifications from websites.", true);
+      btn.disabled = true;
+      return;
+    }
+    const key = (b64) => {
+      const s = atob((b64 + "===".slice((b64.length + 3) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from(s, (c) => c.charCodeAt(0));
+    };
+    const send = async (sub) => {
+      const j = sub.toJSON(), body = new FormData();
+      body.set("endpoint", j.endpoint); body.set("p256dh", j.keys.p256dh); body.set("auth", j.keys.auth);
+      const r = await fetch("/me/push/subscribe", { method: "POST", body, credentials: "same-origin" });
+      if (!r.ok) throw new Error("save");
+    };
+    navigator.serviceWorker.ready.then(async (reg) => {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub && Notification.permission === "granted") { btn.textContent = "On for this device"; btn.classList.add("quiet"); send(sub).catch(() => {}); }
+    }).catch(() => {});
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") { say("Notifications are blocked for Payday. Allow them in this browser’s site settings, then try again.", true); return; }
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        await navigator.serviceWorker.ready;
+        const sub = (await reg.pushManager.getSubscription()) ||
+          await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key(box.dataset.key) });
+        await send(sub);
+        say("Notifications are on for this device. Reloading…");
+        setTimeout(() => location.reload(), 700);
+      } catch (e) {
+        say("Couldn’t turn notifications on here. Try again, or check this browser allows notifications.", true);
+      } finally { btn.disabled = false; }
+    });
+  }
+
   /* ---- Columns menu: choose which columns a table shows, remembered in this browser ---- */
   function columns(root) {
     $$("details.colmenu[data-cols]", root || document).forEach((menu) => {
@@ -385,7 +433,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns();
+    sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
     tidyAddress();
     restoreScroll();
   });

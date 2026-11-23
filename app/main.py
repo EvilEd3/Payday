@@ -33,7 +33,7 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
                    make_cookie, make_invite, make_pre_cookie, memberships, new_backup_codes, new_totp_secret, otpauth_uri,
                    password_problem, profile_admins, refresh_cookie, use_backup_code, user_from_cookie,
                    user_from_pre_cookie, verify_password)
-from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, PendingTransaction, Profile,
+from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
                  PropertyValue, Rule, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
 from .insights import (Ctx, bars, category_averages, category_limits, change, detect_subscriptions, donut,
@@ -157,6 +157,12 @@ def schedule_sync(pid: int, hour: int) -> None:
                       id=f"daily_sync_{pid}", replace_existing=True, misfire_grace_time=7200, coalesce=True)
 
 
+def schedule_notifications() -> None:
+    from . import notify
+    scheduler.add_job(notify.run_all, trigger=CronTrigger(minute=5, timezone=TZ), id="notifications",
+                      replace_existing=True, misfire_grace_time=1800, coalesce=True)
+
+
 def unschedule_sync(pid: int) -> None:
     try:
         scheduler.remove_job(f"daily_sync_{pid}")
@@ -220,6 +226,7 @@ async def lifespan(_app):
     data.clean_temp()
     for pid in all_profile_ids():
         start_profile(pid)
+    schedule_notifications()
     if not scheduler.running:
         scheduler.start()
     for pid in all_profile_ids():
@@ -242,7 +249,8 @@ PUBLIC_PATHS = ("/login", "/setup", "/invite/", "/reset/", "/2fa/", "/manifest.w
 NO_PROFILE_PATHS = ("/site", "/me", "/logout", "/profiles/", "/no-profile")
 # Changes a read-only member may still make (their own preferences, sign-in and which profile they're viewing).
 VIEWER_POSTS = ("/logout", "/privacy", "/me", "/me/password", "/me/username", "/me/signout-everywhere",
-                "/me/2fa/reset", "/me/2fa/codes", "/me/email", "/me/delete", "/me/badge", "/profiles/switch", "/profiles/leave")
+                "/me/2fa/reset", "/me/2fa/codes", "/me/email", "/me/delete", "/me/badge",
+                "/me/notify", "/me/push/subscribe", "/me/push/remove", "/me/push/test", "/profiles/switch", "/profiles/leave")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "").strip().rstrip("/")
 EXTRA_HOSTS = {h.strip().lower() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()}
 
@@ -856,6 +864,68 @@ def save_badge(request: Request, emoji: str = Form(""), colour: str = Form(""), 
     return _settings("you", msg="saved")
 
 
+# ---------- Notifications (per person) ----------
+def _membership(ss: Session, user_id: int, profile_id: int) -> Membership | None:
+    return ss.exec(select(Membership).where(Membership.user_id == user_id, Membership.profile_id == profile_id)).first()
+
+
+@app.post("/me/notify")
+async def save_notify(request: Request, s: Session = Depends(site_session)):
+    from . import notify
+    prof = request.state.profile
+    m = _membership(s, request.state.user.id, prof.id) if prof else None
+    if m:
+        m.notify = json.dumps(notify.clean_prefs(await request.form()))
+        s.add(m)
+        s.commit()
+    return _settings("notify", msg="saved")
+
+
+def _device_label(ua: str) -> str:
+    ua = ua or ""
+    device = next((n for k, n in (("iPhone", "iPhone"), ("iPad", "iPad"), ("Android", "Android"),
+                                  ("Macintosh", "Mac"), ("Windows", "Windows"), ("Linux", "Linux")) if k in ua), "Device")
+    browser = next((n for k, n in (("Edg/", "Edge"), ("Firefox/", "Firefox"), ("Chrome/", "Chrome"),
+                                   ("Safari/", "Safari")) if k in ua), "")
+    return f"{browser} on {device}" if browser and device not in ("iPhone", "iPad") else device
+
+
+@app.post("/me/push/subscribe")
+def push_subscribe(request: Request, endpoint: str = Form(""), p256dh: str = Form(""), auth: str = Form(""),
+                   s: Session = Depends(site_session)):
+    from . import webpush
+    try:
+        ok = (endpoint.startswith("https://") and len(endpoint) < 1000 and len(webpush.unb64u(p256dh)) == 65
+              and len(webpush.unb64u(auth)) == 16)
+    except ValueError:
+        ok = False
+    if not ok:
+        return JSONResponse({"ok": False}, status_code=400)
+    dev = s.exec(select(PushDevice).where(PushDevice.endpoint == endpoint)).first() or PushDevice(endpoint=endpoint, p256dh="", auth="")
+    dev.user_id, dev.p256dh, dev.auth = request.state.user.id, p256dh, auth
+    dev.label = _device_label(request.headers.get("user-agent", ""))
+    dev.created = dev.created or datetime.now(timezone.utc)
+    s.add(dev)
+    s.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/me/push/remove")
+def push_remove(request: Request, device: int = Form(0), s: Session = Depends(site_session)):
+    dev = s.get(PushDevice, device)
+    if dev and dev.user_id == request.state.user.id:
+        s.delete(dev)
+        s.commit()
+    return _settings("notify", msg="devremoved")
+
+
+@app.post("/me/push/test")
+def push_test(request: Request, s: Session = Depends(site_session)):
+    from . import notify
+    sent = notify.test_message(s, request.state.user.id)
+    return _settings("notify", msg="pushtest" if sent else "pushfail")
+
+
 @app.post("/me/password")
 def change_password(request: Request, current: str = Form(...), new: str = Form(...),
                     s: Session = Depends(site_session)):
@@ -987,6 +1057,9 @@ def delete_account(request: Request, current: str = Form(...), code: str = Form(
         s.delete(m)
     for i in s.exec(select(Invite).where(Invite.user_id == user.id)):
         s.delete(i)
+    for row in [*s.exec(select(PushDevice).where(PushDevice.user_id == user.id)),
+                *s.exec(select(NotifySent).where(NotifySent.user_id == user.id))]:
+        s.delete(row)
     s.delete(user)
     s.commit()
     resp = back("/welcome?msg=deleted")
@@ -1904,7 +1977,7 @@ def mortgage_clear_history(s: Session = Depends(session)):
 # ---------- Settings ----------
 SETTINGS_TABS = [("pay", "Household and pay"), ("bank", "Bank connection"), ("accounts", "Accounts"),
                  ("categories", "Categories"), ("limits", "Category limits"), ("rules", "Rules"),
-                 ("members", "People"), ("data", "Backup and export"), ("you", "You")]
+                 ("members", "People"), ("data", "Backup and export"), ("notify", "Notifications"), ("you", "You")]
 PAYDAY_ADJUST = ("previous_business_day", "next_business_day", "none")
 
 
@@ -1943,7 +2016,7 @@ templates.env.globals["describe_rule"] = describe_rule
 @app.get("/settings")
 def settings_page(request: Request, tab: str = "", s: Session = Depends(session)):
     me = request.state.user
-    tabs = SETTINGS_TABS if me.role == "admin" else [("you", "You")]
+    tabs = SETTINGS_TABS if me.role == "admin" else [("notify", "Notifications"), ("you", "You")]
     if tab not in dict(tabs):
         tab = tabs[0][0]
     ctx: dict = {"tab": tab, "tabs": tabs, "page": "settings", "msg": request.query_params.get("msg", ""),
@@ -1991,6 +2064,14 @@ def settings_page(request: Request, tab: str = "", s: Session = Depends(session)
         with Session(site_engine) as ss:
             u = ss.get(User, me.id)
             ctx.update(codes_left=backup_codes_left(u))
+    elif tab == "notify":
+        from . import notify, webpush
+        with Session(site_engine) as ss:
+            m = _membership(ss, me.id, request.state.profile.id)
+            ctx.update(prefs=notify.prefs_of(m) if m else dict(notify.DEFAULTS),
+                       devices=ss.exec(select(PushDevice).where(PushDevice.user_id == me.id)
+                                       .order_by(PushDevice.created)).all(),
+                       vapid=webpush.public_key(), warn=rate_warning(s))
     elif tab == "categories":
         used = {cid: n for cid, n in s.exec(select(Transaction.category_id, func.count()).group_by(Transaction.category_id))}
         ctx.update(cats=cats, used=used)
@@ -2486,6 +2567,9 @@ def site_delete_user(request: Request, user_id: int, s: Session = Depends(site_s
         s.delete(m)
     for i in s.exec(select(Invite).where(Invite.user_id == user.id)):
         s.delete(i)
+    for row in [*s.exec(select(PushDevice).where(PushDevice.user_id == user.id)),
+                *s.exec(select(NotifySent).where(NotifySent.user_id == user.id))]:
+        s.delete(row)
     s.delete(user)
     s.commit()
     return _site("userdeleted")
