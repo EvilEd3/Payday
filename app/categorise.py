@@ -1,4 +1,5 @@
 import re
+from collections import Counter, defaultdict
 from datetime import timedelta
 
 from sqlmodel import Session, select
@@ -38,7 +39,7 @@ class Categoriser:
     """Categorises transactions against one snapshot of your categories, rules and bills.
 
     Order: transfer between your accounts > recurring bill > your rules > learned merchants >
-    Akahu's own category > Income / Uncategorised. Anything you set by hand is left alone.
+    Akahu's own category > a refund from a payee you spend with > Income / Uncategorised. Anything you set by hand is left alone.
 
     Loading the lookups once, and tracking which bill due dates are already paid in memory, lets a
     full re-run over every transaction finish in a single database commit."""
@@ -50,6 +51,7 @@ class Categoriser:
                             key=lambda r: (0 if r.source == "user" else 1, r.priority, r.id or 0))
         self.bills = session.exec(select(Bill).where(Bill.active == True).order_by(Bill.id)).all()  # noqa: E712
         self.paid: dict[int, dict] = {}  # bill id -> {due date: id of the transaction that paid it}
+        self._spent_with: dict[str, int] | None = None  # payee -> the expense category you usually spend there
         for t in session.exec(select(Transaction).where(Transaction.bill_id != None)):  # noqa: E711
             self.paid.setdefault(t.bill_id, {})[t.bill_due_date] = t.id
 
@@ -60,6 +62,20 @@ class Categoriser:
             self.s.flush()
             self.cats[name] = cat.id
         return self.cats[name]
+
+    def refund_category(self, txn: Transaction) -> int | None:
+        """For money in: the expense category of a payee you've spent money with, so a refund or return
+        takes the spending back off that category instead of counting as income. None for other payees."""
+        if self._spent_with is None:
+            counts: dict[str, Counter] = defaultdict(Counter)
+            expense = {c.id for c in self.s.exec(select(Category).where(Category.kind == "expense"))}
+            for t in self.s.exec(select(Transaction).where(Transaction.amount < 0, Transaction.bill_id == None,  # noqa: E711
+                                                           Transaction.transfer_id == None)):  # noqa: E711
+                if t.category_id in expense and t.category_source != "refund":
+                    counts[payee_pattern(t).lower()][t.category_id] += 1
+            self._spent_with = {k: c.most_common(1)[0][0] for k, c in counts.items() if c}
+        key = payee_pattern(txn).lower()
+        return self._spent_with.get(key) if key else None
 
     def _find_bill(self, txn: Transaction):
         if txn.amount >= 0:
@@ -102,7 +118,11 @@ class Categoriser:
                 return
 
         if txn.amount > 0:
-            txn.category_id, txn.category_source = self.category("Income", "income"), "default"
+            refund_to = self.refund_category(txn)
+            if refund_to:
+                txn.category_id, txn.category_source = refund_to, "refund"
+            else:
+                txn.category_id, txn.category_source = self.category("Income", "income"), "default"
         elif txn.akahu_group:
             txn.category_id, txn.category_source = self.category(txn.akahu_group), "akahu"
         else:

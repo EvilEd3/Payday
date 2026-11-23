@@ -22,8 +22,9 @@
 <div class="kpis">
   <a class="kpi" href="/transactions?view=income{{ o }}"><b class="pos">{{ c.income|money }}</b><span>Income</span>{{ change_note(chg.income, False) }}</a>
   <a class="kpi" href="/transactions?view=spending{{ o }}"><b>{{ c.spent|money }}</b><span>Total spent</span>{{ change_note(chg.spent) }}</a>
-  <div class="kpi"><b class="{{ 'pos' if c.saved >= 0 else 'neg' }}">{{ c.saved|abs|money }}</b>
-    <span>{{ 'Kept' if c.saved >= 0 else 'Overspent' }}{% if c.rate is not none %}, {{ (c.rate|abs * 100)|round|int }}% of income{% endif %}</span></div>
+  <div class="kpi"><b class="{{ 'pos' if kept >= 0 else 'neg' }}">{{ kept|abs|money }}</b>
+    <span>{{ ('Kept' if kept >= 0 else 'Overspent') ~ (' so far' if in_progress else '') }}{% if c.income %}, {{ (kept|abs / c.income * 100)|round|int }}% of income{% endif %}</span>
+    {% if to_come > 0 %}<span class="chg">After {{ to_come|money }} of bills to come</span>{% endif %}</div>
   <a class="kpi" href="/transactions?view=daytoday{{ o }}"><b>{{ c.per_day|money }}</b><span>Day-to-day spend a day</span>{{ change_note(chg.per_day) }}</a>
   <a class="kpi" href="/{{ '?offset=' ~ c.offset if c.offset else '' }}#bills"><b>{{ c.bills|money }}</b><span>Bills paid, {{ dash.paid|length }} of {{ dash.paid|length + dash.upcoming|length }} due</span></a>
   <div class="kpi"><b>{{ c.no_spend_days }}</b><span>No-spend day{{ 's' if c.no_spend_days != 1 }}</span></div>

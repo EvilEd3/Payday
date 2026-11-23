@@ -84,7 +84,7 @@
         <span>File everything from “{{ (t.merchant or t.description)|truncate(40, True) }}” as {{ cat_map[t.category_id].name }}?</span>
         <button class="small">Always do this</button>
       </form>
-      {% elif t.category_source in ('akahu', 'default') and not t.reviewed and not t.transfer_id and not t.bill_id %}<div class="why"><a href="/review">A guess. Review it</a></div>
+      {% elif t.category_source in ('akahu', 'refund', 'default') and not t.reviewed and not t.transfer_id and not t.bill_id %}<div class="why"><a href="/review">{{ 'Looks like a refund. Review it' if t.category_source == 'refund' else 'A guess. Review it' }}</a></div>
       {% elif why.get(t.category_source) %}<div class="why">{{ why[t.category_source] }}</div>{% endif %}
     </td>
     <td class="c-notes{{ ' blank' if not t.note and not t.tags.strip() }}">{% if t.note %}<div class="note">{{ t.note }}</div>{% endif %}{% if t.tags.strip() %}<div class="marks">{% for tg in t.tags.split(',') if tg.strip() %}<a class="chip" href="/transactions?tag={{ tg.strip()|urlencode }}">#{{ tg.strip() }}</a>{% endfor %}</div>{% endif %}</td>

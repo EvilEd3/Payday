@@ -1,6 +1,9 @@
 import re
 from datetime import date, timedelta
+from functools import lru_cache
 from typing import Optional
+
+import regex
 
 from dateutil.relativedelta import relativedelta
 from sqlmodel import Session, select
@@ -11,27 +14,48 @@ APPROX_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 30, "quarterly": 91, "
 MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
 
 
+MAX_PATTERN = 200  # characters in a rule's or bill's pattern
+REGEX_TIMEOUT = 0.05  # seconds one match may take
+_slow: set[str] = set()  # expressions that ran out of time once: treated as matching nothing from then on
+
+
+def _compiled(expr: str):
+    try:
+        return _compile(expr)
+    except (regex.error, ValueError):
+        return None
+
+
+@lru_cache(maxsize=512)
+def _compile(expr: str):
+    return regex.compile(expr, regex.IGNORECASE | regex.VERSION0)
+
+
 def matches_pattern(pattern: str, text: str) -> bool:
     if not pattern:
         return False
     if pattern.startswith("re:"):
+        # Some expressions take practically forever on the right text (catastrophic backtracking, e.g. (a+)+$).
+        # The "regex" module can give up after a time limit, so one bad rule can't hang the sync or a page.
+        expr = pattern[3:]
+        compiled = _compiled(expr) if len(expr) <= MAX_PATTERN and expr not in _slow else None
+        if compiled is None:
+            return False
         try:
-            return re.search(pattern[3:], text, re.I) is not None
-        except re.error:
+            return compiled.search(text, timeout=REGEX_TIMEOUT) is not None
+        except TimeoutError:
+            _slow.add(expr)
             return False
     return pattern.lower() in text.lower()
 
 
 def valid_pattern(pattern: str) -> bool:
-    """Non-empty, and if it's a regular expression (re:...) it must compile."""
+    """Non-empty, not too long, and if it's a regular expression (re:...) it must compile."""
     pattern = pattern.strip()
-    if not pattern or pattern == "re:":
+    if not pattern or pattern == "re:" or len(pattern) > MAX_PATTERN + 3:
         return False
     if pattern.startswith("re:"):
-        try:
-            re.compile(pattern[3:])
-        except re.error:
-            return False
+        return _compiled(pattern[3:]) is not None
     return True
 
 

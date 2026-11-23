@@ -1,0 +1,2 @@
+# For running the tests (CI uses the same version): pip install -r requirements.txt -r requirements-dev.txt && python -m pytest tests
+pytest==8.4.2
