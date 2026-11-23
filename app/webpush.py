@@ -97,6 +97,31 @@ def vapid_header(endpoint: str, key: ec.EllipticCurvePrivateKey | None = None, n
     return f"vapid t={header}.{claims}.{signature}, k={b64u(_raw_public(key))}"
 
 
+# The browsers' own push services. Subscriptions can only point at these, so a signed-in person can't use
+# "send a test notification" to make this server post to some other address (an internal service, say).
+# PUSH_HOSTS adds more, comma separated (a leading dot means "and anything under it").
+PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com", ".push.services.mozilla.com",
+              "web.push.apple.com", ".push.apple.com", ".notify.windows.com")
+
+
+def _push_hosts() -> tuple:
+    extra = tuple(h.strip().lower() for h in os.getenv("PUSH_HOSTS", "").split(",") if h.strip())
+    return PUSH_HOSTS + extra
+
+
+def endpoint_ok(endpoint: str) -> bool:
+    """An https address on a known push service, on the standard port."""
+    try:
+        url = urlparse(endpoint)
+        port = url.port
+    except ValueError:
+        return False
+    host = (url.hostname or "").lower()
+    if url.scheme != "https" or port not in (None, 443) or url.username or url.password or not host:
+        return False
+    return any(host == h.lstrip(".") or (h.startswith(".") and host.endswith(h)) for h in _push_hosts())
+
+
 class Gone(Exception):
     """The device unsubscribed or the app was removed: forget this subscription."""
 
@@ -104,8 +129,8 @@ class Gone(Exception):
 def send(endpoint: str, p256dh: str, auth: str, message: dict, ttl: int = 24 * 3600,
          client: httpx.Client | None = None) -> None:
     """Send one notification. Raises Gone when the subscription no longer exists, httpx errors otherwise."""
-    if urlparse(endpoint).scheme != "https":
-        raise Gone("not an https push endpoint")
+    if not endpoint_ok(endpoint):
+        raise Gone("not a known push service")
     body = encrypt(json.dumps(message, separators=(",", ":")).encode(), p256dh, auth)
     headers = {"Authorization": vapid_header(endpoint), "Content-Encoding": "aes128gcm",
                "Content-Type": "application/octet-stream", "TTL": str(ttl), "Urgency": "normal"}
