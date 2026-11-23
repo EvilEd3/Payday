@@ -32,7 +32,15 @@
 <section class="paycard" aria-labelledby="headline">
   <div class="pc-top">
     {{ period_nav('/', d.offset, d.start, d.payday) }}
-    {% if not d.is_past %}<span class="pc-days">{{ d.days_left }} day{{ 's' if d.days_left != 1 }} {{ 'left this month' if d.calendar else 'to payday' }}</span>{% endif %}
+    {% if not d.is_past %}
+    {% set dated = d.all_accounts|selectattr('refreshed_txns')|list %}
+    <div class="pc-right">
+      <span class="pc-days">{{ d.days_left }} day{{ 's' if d.days_left != 1 }} {{ 'left this month' if d.calendar else 'to payday' }}</span>
+      {% if dated %}{% set oldest = dated|map(attribute='refreshed_txns')|min %}{% set late = d.all_accounts|select('stale')|list %}
+      <span class="pc-fresh{{ ' late' if late }}" title="When your bank last sent new data to Akahu{{ ': ' ~ (late|map(attribute='name')|join(', ')) ~ ' behind' if late }}"><i aria-hidden="true"></i>Bank data from {{ oldest|freshness }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
 
   {% if d.is_past %}
