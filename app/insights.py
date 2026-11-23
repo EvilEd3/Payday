@@ -333,24 +333,50 @@ def detect_subscriptions(ctx: "Ctx", bills: list, dismissed: set[str]) -> list[d
 LIMIT_PERIODS = 3
 
 
-def category_spend(ctx: "Ctx", start: date, end: date) -> dict[int, float]:
+def category_spend(ctx: "Ctx", start: date, end: date, bills: bool = True) -> dict[int, float]:
     totals: dict[int, float] = defaultdict(float)
     for t in ctx.txns(start, end):
-        if ctx.is_spending(t):
+        if ctx.is_spending(t) and (bills or t.bill_id is None):
             totals[t.category_id] -= t.amount
     return totals
 
 
-def category_averages(ctx: "Ctx", offset: int = 0) -> dict[int, float]:
-    """Average spend per category over the LIMIT_PERIODS pay periods before the one at offset."""
-    history = [category_spend(ctx, *ctx.period(offset - k)) for k in range(1, LIMIT_PERIODS + 1)]
+def category_averages(ctx: "Ctx", offset: int = 0, bills: bool = True) -> dict[int, float]:
+    """Average spend per category over the LIMIT_PERIODS pay periods before the one at offset.
+    bills=False leaves out payments matched to a bill, giving the day-to-day average."""
+    history = [category_spend(ctx, *ctx.period(offset - k), bills=bills) for k in range(1, LIMIT_PERIODS + 1)]
     ids = {cid for h in history for cid in h}
     return {cid: sum(h.get(cid, 0) for h in history) / LIMIT_PERIODS for cid in ids}
 
 
+def bills_due_by_category(ctx: "Ctx", offset: int = 0) -> dict[int, float]:
+    """What your bills expect to take from each category in the pay period at offset, from their schedules.
+    A bill without a category of its own is filed under Bills, as the categoriser does."""
+    from .bills import occurrences  # local import keeps this module's imports small
+    from .db import Bill
+    start, end = ctx.period(offset)
+    bills_cat = next((cid for cid, c in ctx.cats.items() if c.name == "Bills"), None)
+    out: dict[int, float] = defaultdict(float)
+    for b in ctx.s.exec(select(Bill).where(Bill.active == True)):  # noqa: E712
+        cid = b.category_id or bills_cat
+        if cid is not None:
+            out[cid] += b.amount * len(occurrences(b, start, end))
+    return out
+
+
+def usual_spend(ctx: "Ctx", offset: int = 0) -> dict[int, float]:
+    """The automatic limit for each category: its usual day-to-day spending, plus the bills due in it this
+    period. Bills are taken from their schedules rather than averaged, so a quarterly or yearly bill landing
+    this pay doesn't look like overspending, and isn't spread into pays where it isn't due."""
+    usual = defaultdict(float, category_averages(ctx, offset, bills=False))
+    for cid, amount in bills_due_by_category(ctx, offset).items():
+        usual[cid] += amount
+    return dict(usual)
+
+
 def category_limits(ctx: "Ctx", offset: int = 0) -> dict[int, dict]:
-    """{category_id: {"limit": amount, "mode": auto|fixed, "average": avg}} for the period at offset."""
-    averages = category_averages(ctx, offset)
+    """{category_id: {"limit": amount, "mode": auto|fixed, "average": usual}} for the period at offset."""
+    averages = usual_spend(ctx, offset)
     out = {}
     for cid, cat in ctx.cats.items():
         if cat.kind != "expense" or cat.limit_mode == "off":
@@ -364,7 +390,7 @@ def category_limits(ctx: "Ctx", offset: int = 0) -> dict[int, dict]:
 
 
 # ---------- review: categories that were only a guess ----------
-GUESSED = ("akahu", "default")
+GUESSED = ("akahu", "refund", "default")
 
 
 def needs_review_query():

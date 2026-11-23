@@ -6,6 +6,15 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Refunds take spending back off**: money back from a shop you spend with goes to that shop's category instead
+  of counting as income, so a return no longer raises your daily amount. It's marked "Looks like a refund" for review.
+- **Bills no longer look like overspending**: a category's usual amount is now its day-to-day spending plus the
+  bills due in it this pay, so a quarterly or yearly bill landing this pay doesn't turn the category red or send an
+  over-limit alert.
+- **Summary's "Kept" waits for bills to come**: while a pay is still running it reads "Kept so far" with the bills
+  still to come taken off, and "Where your income went" shows them as their own slice.
+- **Tests**: a first set for the daily-number maths (`python -m pytest`).
+
 - **Notifications** on your phone or computer (Settings, Notifications), chosen per person and per household:
   bills coming up or missed, pay landed, day rate under your warning line, category limits, big purchases, sync
   problems, stale bank data, the last pay's result, a weekly summary, goals reached and transactions to check.

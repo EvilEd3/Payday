@@ -183,7 +183,7 @@ class Category(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
     kind: str = "expense"  # income | expense | transfer
-    limit_mode: str = "auto"  # auto (average of last 3 pay periods) | fixed | off
+    limit_mode: str = "auto"  # auto (usual day-to-day over the last 3 pay periods + bills due) | fixed | off
     limit_amount: Optional[float] = None  # used when limit_mode == fixed
 
 
@@ -223,7 +223,7 @@ class Transaction(SQLModel, table=True):
     akahu_type: str = ""
     akahu_group: str = ""
     category_id: Optional[int] = Field(default=None, foreign_key="category.id")
-    category_source: str = ""  # bill | rule | learned | akahu | default | manual
+    category_source: str = ""  # bill | rule | learned | akahu | refund | default | manual
     bill_id: Optional[int] = Field(default=None, index=True)
     bill_due_date: Optional[Date] = None
     transfer_id: Optional[str] = Field(default=None, index=True)  # the matching other half of a transfer

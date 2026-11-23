@@ -147,11 +147,11 @@
   <div class="row" data-search="{{ c.name }}">
     <div class="grow">
       <div class="title">{{ c.name }}</div>
-      <div class="muted small">{% if averages.get(c.id) %}Averages {{ averages[c.id]|money }} a pay period{% else %}No spending in the last 3 pay periods{% endif %}</div>
+      <div class="muted small">{% if averages.get(c.id) %}Usually {{ averages[c.id]|money }} this pay period: day-to-day spending over the last 3, plus bills due now{% else %}No spending in the last 3 pay periods and no bills due{% endif %}</div>
     </div>
     <form class="inline" method="post" action="/categories/{{ c.id }}/limit">
       <select name="limit_mode" data-limit-mode aria-label="Limit for {{ c.name }}">
-        <option value="auto" {% if c.limit_mode == 'auto' %}selected{% endif %}>Average{% if averages.get(c.id) and not private() %} (${{ '%.0f'|format(averages[c.id]) }}){% endif %}</option>
+        <option value="auto" {% if c.limit_mode == 'auto' %}selected{% endif %}>Usual{% if averages.get(c.id) and not private() %} (${{ '%.0f'|format(averages[c.id]) }}){% endif %}</option>
         <option value="fixed" {% if c.limit_mode == 'fixed' %}selected{% endif %}>Fixed amount</option>
         <option value="off" {% if c.limit_mode == 'off' %}selected{% endif %}>No limit</option>
       </select>
