@@ -57,6 +57,8 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+On TrueNAS SCALE, run it as a custom app: see [Payday on TrueNAS](docs/truenas.md) for installing and updating.
+
 Open http://localhost:8000, create your login, scan the QR code with an authenticator app, and save the backup codes.
 
 ### Connect your bank (Akahu personal app)
