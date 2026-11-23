@@ -95,7 +95,34 @@ def bank_stale(account) -> bool:
     return bool(when) and (datetime.now(timezone.utc) - when).total_seconds() > STALE_HOURS * 3600
 
 
+BEHIND_HOURS = 1  # an account whose data is this much older than the newest is named as behind
+
+
+def _naive(dt):
+    return dt.replace(tzinfo=None) if dt and dt.tzinfo else dt
+
+
+def bank_data(accounts) -> dict | None:
+    """The newest bank data Payday holds, and which accounts lag well behind it.
+
+    The newest time moves forward whenever a sync brings in fresh data. (Taking the oldest
+    account instead kept the label stuck on one slow or closed account after every sync.)
+    Accounts the last sync didn't see, e.g. ones removed from Akahu, are left out of "behind".
+    """
+    dated = [(a, w) for a in accounts if (w := _refreshed(a.refreshed_txns))]
+    if not dated:
+        return None
+    newest = max(w for _, w in dated)
+    seen = [_naive(a.updated_at) for a, _ in dated if a.updated_at]
+    last_sync = max(seen) if seen else None
+    behind = [{"name": a.name, "when": w.isoformat()} for a, w in sorted(dated, key=lambda d: d[1])
+              if (newest - w).total_seconds() > BEHIND_HOURS * 3600
+              and not (last_sync and a.updated_at and (last_sync - _naive(a.updated_at)).total_seconds() > 600)]
+    return {"when": newest.isoformat(), "behind": behind}
+
+
 templates.env.filters["freshness"] = bank_freshness
+templates.env.filters["bank_data"] = bank_data
 templates.env.tests["stale"] = bank_stale
 templates.env.filters["short"] = lambda d: d.strftime("%-d %b")
 templates.env.filters["long"] = lambda d: d.strftime("%A %-d %B")

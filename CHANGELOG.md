@@ -31,6 +31,9 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
   Scheduled syncs still use Akahu's own daily refresh.
 - **Bank data age** on the Overview pay card (top right), on each account (Settings, Accounts) and in the status line, with a heads-up when a bank
   hasn't sent new data for over 30 hours or its connection needs attention.
+- **Bank data time now updates after a sync.** The "Bank data from …" label on the Overview and in the footer showed
+  the oldest account, so one slow or closed account kept it stuck. It now shows the newest data, and the footer names any
+  account that is more than an hour behind. Accounts more than 30 hours behind are still flagged as before.
 
 ## 1.0.0
 

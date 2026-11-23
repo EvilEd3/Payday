@@ -33,11 +33,11 @@
   <div class="pc-top">
     {{ period_nav('/', d.offset, d.start, d.payday) }}
     {% if not d.is_past %}
-    {% set dated = d.all_accounts|selectattr('refreshed_txns')|list %}
+    {% set bd = d.all_accounts|bank_data %}
     <div class="pc-right">
       <span class="pc-days">{{ d.days_left }} day{{ 's' if d.days_left != 1 }} {{ 'left this month' if d.calendar else 'to payday' }}</span>
-      {% if dated %}{% set oldest = dated|map(attribute='refreshed_txns')|min %}{% set late = d.all_accounts|select('stale')|list %}
-      <span class="pc-fresh{{ ' late' if late }}" title="When your bank last sent new data to Akahu{{ ': ' ~ (late|map(attribute='name')|join(', ')) ~ ' behind' if late }}"><i aria-hidden="true"></i>Bank data from {{ oldest|freshness }}</span>
+      {% if bd %}{% set late = d.all_accounts|select('stale')|list %}
+      <span class="pc-fresh{{ ' late' if late }}" title="When your bank last sent new data to Akahu{% for b in bd.behind %}{{ '. ' if loop.first else ', ' }}{{ b.name }} from {{ b.when|freshness }}{% endfor %}"><i aria-hidden="true"></i>Bank data from {{ bd.when|freshness }}</span>
       {% endif %}
     </div>
     {% endif %}
@@ -218,8 +218,8 @@
 </div>
 
 <div class="statusline">
-  {% set fresh = d.all_accounts|selectattr('refreshed_txns')|map(attribute='refreshed_txns')|list %}
-  <span>{% if d.last_sync %}Synced {{ d.last_sync }}{% if fresh %}, bank data from {{ (fresh|min)|freshness }}{% endif %}. {{ d.last_sync_status }}{% else %}Not synced with your bank yet.{% endif %}
+  {% set bd = d.all_accounts|bank_data %}
+  <span>{% if d.last_sync %}Synced {{ d.last_sync }}{% if bd %}, bank data from {{ bd.when|freshness }}{% if bd.behind %} ({% for b in bd.behind %}{{ b.name }} from {{ b.when|freshness }}{{ ', ' if not loop.last }}{% endfor %}){% endif %}{% endif %}. {{ d.last_sync_status }}{% else %}Not synced with your bank yet.{% endif %}
     <button type="button" class="linkish" data-sync-show>Details</button></span>
   <form class="admin-only" method="post" action="/sync"><button class="quiet small" data-sync-start>Sync now</button></form>
 </div>
