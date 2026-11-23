@@ -4,7 +4,7 @@ starlette==1.10.0
 pydantic==2.14.2
 uvicorn[standard]==0.54.0
 h11==0.16.0
-sqlmodel==0.0.48
+sqlmodel==0.0.50
 SQLAlchemy==2.0.55
 httpx==0.28.1
 apscheduler==3.11.3
