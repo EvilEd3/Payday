@@ -59,6 +59,17 @@
     document.addEventListener("toggle", (e) => {
       const d = e.target;
       if (d.matches && d.matches(SEL) && d.open) menus().forEach((o) => { if (o !== d) o.open = false; });
+      if (d.matches && d.matches("details.more")) {
+        d.classList.remove("up");
+        const pop = d.querySelector(".pop");
+        if (d.open && pop) {
+          const r = pop.getBoundingClientRect(), top = d.getBoundingClientRect().top;
+          const tab = document.querySelector(".tabbar");
+          const floor = tab && getComputedStyle(tab).display !== "none" ? tab.getBoundingClientRect().top : window.innerHeight;
+          const below = floor - r.top, need = r.height + 16;
+          if (below < need && top > need) d.classList.add("up");
+        }
+      }
     }, true);
     document.addEventListener("click", (e) => { menus().forEach((d) => { if (d.open && !d.contains(e.target)) d.open = false; }); });
     document.addEventListener("keydown", (e) => {
@@ -130,6 +141,65 @@
     get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private window: just don't remember */ } },
   };
+  /* ---- drag a column's right edge to resize it; double-click the edge to reset. Remembered in this browser ---- */
+  const WIDE = window.matchMedia("(min-width: 760px)");
+  function resizable(table, heads, key) {
+    if (table.classList.contains("ledger") || heads.length < 2) return;
+    const last = heads.length - 1;
+    let flex = -1;  // the description column, or else the widest, takes whatever is left
+    const desc = heads.findIndex((h) => h.classList.contains("c-desc"));
+    const pick = (widths) => (desc >= 0 ? desc : widths.indexOf(Math.max(...widths)));
+    const apply = (widths) => {
+      if (flex < 0) flex = pick(widths);
+      table.classList.add("sized");
+      heads.forEach((h, i) => { h.style.width = i === flex ? "auto" : (widths[i] ? widths[i] + "px" : ""); });
+    };
+    const clear = () => { table.classList.remove("sized"); heads.forEach((h) => { h.style.width = ""; }); };
+    const restore = () => {
+      const saved = keep.get(key);
+      if (WIDE.matches && saved && Array.isArray(saved.w) && saved.w.length === heads.length) { flex = saved.f; apply(saved.w); }
+      else clear();
+    };
+    restore();
+    WIDE.addEventListener("change", restore);
+    heads.forEach((th, i) => {
+      if (i === last) return;
+      const grip = document.createElement("span");
+      grip.className = "colgrip";
+      grip.title = "Drag to resize. Double-click to reset all columns";
+      grip.setAttribute("aria-hidden", "true");
+      th.appendChild(grip);
+      grip.addEventListener("click", (e) => e.stopPropagation());
+      grip.addEventListener("dblclick", (e) => { e.stopPropagation(); keep.set(key, null); flex = -1; clear(); });
+      grip.addEventListener("pointerdown", (e) => {
+        if (!WIDE.matches || e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation();
+        grip.setPointerCapture(e.pointerId);
+        const widths = heads.map((h) => Math.round(h.getBoundingClientRect().width));
+        if (flex < 0) flex = pick(widths);
+        const startX = e.clientX, start = widths[i];
+        if (i === flex) flex = widths.indexOf(Math.max(...widths.filter((w, k) => k !== i)));
+        const room = () => table.parentElement.clientWidth - widths.reduce((t, w, k) => t + (k === i || k === flex ? 0 : w), 0) - 96;
+        apply(widths);
+        const move = (ev) => {
+          widths[i] = Math.round(Math.min(Math.max(48, start + ev.clientX - startX), Math.max(48, room())));
+          heads[i].style.width = widths[i] + "px";
+        };
+        const up = () => {
+          grip.removeEventListener("pointermove", move);
+          grip.removeEventListener("pointerup", up);
+          grip.removeEventListener("pointercancel", up);
+          table.classList.remove("resizing");
+          keep.set(key, { w: widths, f: flex });
+        };
+        table.classList.add("resizing");
+        grip.addEventListener("pointermove", move);
+        grip.addEventListener("pointerup", up);
+        grip.addEventListener("pointercancel", up);
+      });
+    });
+  }
+
   function tables(root) {
     $$("table", root || document).forEach((table, tIndex) => {
       if (table.dataset.ready) return;
@@ -145,6 +215,8 @@
       [...body.rows].forEach((r) => [...r.cells].forEach((c, i) => {
         if (!c.hasAttribute("data-label") && heads[i]) c.dataset.label = heads[i].textContent.trim();
       }));
+
+      resizable(table, heads, key.replace("sort:", "cols:"));
 
       if (!table.classList.contains("nosort")) heads.forEach((th, i) => {
         if (!th.textContent.trim()) return;

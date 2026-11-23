@@ -528,8 +528,8 @@ a.cc-col:hover .cc-bar { background: var(--ink); }
 .cc-seg.d2d:first-child { border-radius: 2px 2px 0 0; }
 a.cc-seg:hover { filter: brightness(.85); }
 .cc-bar.stack.faded { opacity: .25; }
-.cc-bar.cut::before { content: ""; position: absolute; left: -1px; right: -1px; top: 14%; height: 5px; z-index: 2;
-  background: var(--surface); transform: skewY(-12deg); }
+.cc-bar.cut .cc-seg.bills { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%); mask-image: linear-gradient(to bottom, transparent, #000 30%); }
+.key-cut { display: inline-block; width: .7rem; height: .9rem; border-radius: 2px; vertical-align: -.15rem; background: linear-gradient(to bottom, transparent, var(--flax) 60%); }
 .key-d2d, .key-bills { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; vertical-align: -.05rem; background: var(--bush); }
 .key-bills { background: var(--flax); }
 .check { max-width: 40rem; }
@@ -684,7 +684,7 @@ details.danger-zone .pop { position: absolute; right: 0; top: calc(100% + .3rem)
 .pubbar nav > a:not(.btn) { text-decoration: none; color: var(--muted); font-weight: 550; }
 .pubbar nav > a:not(.btn):hover, .pubbar nav > a[aria-current] { color: var(--ink); }
 .sitefoot { max-width: 72rem; margin: 0 auto; padding: 1.5rem var(--gutter) calc(2rem + env(safe-area-inset-bottom, 0px));
-  color: var(--muted); font-size: .8125rem; border-top: 1px solid var(--line); }
+  color: var(--muted); font-size: .8125rem; background: linear-gradient(var(--line), var(--line)) center top / calc(100% - 2 * var(--gutter)) 1px no-repeat; }
 .sitefoot nav { display: flex; flex-wrap: wrap; gap: .4rem 1.25rem; }
 .sitefoot a { color: inherit; text-decoration: none; }
 .sitefoot a:hover { color: var(--ink); text-decoration: underline; }
@@ -838,3 +838,46 @@ details.colmenu .pop p { margin: 0 0 .1rem; }
 .money-in > span { color: var(--muted); }
 .goalstats dd, .goalstats dd .m { font-family: inherit; letter-spacing: 0; }
 .sitefoot .ver { color: var(--muted); margin-left: auto; }
+
+/* Overview: bill totals */
+.billsums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin: 0 0 .9rem; }
+.billsums > div { background: var(--sunk); border-radius: 10px; padding: .55rem .7rem; min-width: 0; }
+.billsums dt { font-size: .75rem; color: var(--muted); display: flex; align-items: center; gap: .35rem; }
+.billsums dt::before { content: ""; width: .5rem; height: .5rem; border-radius: 50%; background: var(--muted); flex: none; }
+.billsums .paid dt::before { background: var(--bush); }
+.billsums .pend dt::before { background: var(--trend); }
+.billsums .due dt::before { background: var(--flax); }
+.billsums .all dt::before { display: none; }
+.billsums dd { margin: .15rem 0 0; font-weight: 700; font-size: .975rem; overflow-wrap: anywhere; }
+.billsums small { display: block; font-size: .7rem; color: var(--rata); margin-top: .1rem; }
+@media (max-width: 520px) { .billsums { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Menus near the bottom of a table open upwards, and tables don't clip them */
+.panel.flush:has(details.more) { overflow: visible; }
+.panel.flush:has(details.more) > table thead tr:first-child th:first-child { border-top-left-radius: var(--r-panel); }
+.panel.flush:has(details.more) > table thead tr:first-child th:last-child { border-top-right-radius: var(--r-panel); }
+details.more.up > .pop { top: auto; bottom: calc(100% + .35rem); }
+.check { max-width: none; }
+.section > section.solo > .panel { margin-top: .75rem; }
+
+/* Resizable columns */
+@media (min-width: 760px) {
+  table:not(.ledger) thead th { position: relative; }
+  .colgrip { position: absolute; top: 0; bottom: 0; right: -5px; width: 10px; cursor: col-resize; z-index: 3; touch-action: none; }
+  .colgrip::after { content: ""; position: absolute; top: 25%; bottom: 25%; left: 4px; width: 2px; border-radius: 2px; background: var(--line); opacity: 0; transition: opacity .15s; }
+  thead:hover .colgrip::after { opacity: 1; }
+  .colgrip:hover::after, table.resizing .colgrip::after { background: var(--bush); opacity: 1; top: 10%; bottom: 10%; }
+  table.sized { table-layout: fixed; width: 100%; }
+  table.sized td, table.sized th { overflow-wrap: anywhere; box-sizing: border-box; }
+  table.resizing { user-select: none; cursor: col-resize; }
+}
+@media (max-width: 759px) { .colgrip { display: none; } }
+
+/* One page width: panels always span the page; form content inside keeps a readable width */
+main .narrow { max-width: none; }
+main .narrow .fields:not(.panel), main .narrow form > label, main .narrow .panel > p, main .narrow .panel > form > p,
+main .narrow .hint, main .narrow fieldset, main .narrow .panel.fields > .wide > input { max-width: 44rem; }
+main .narrow .fields:not(.one) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 16rem)); }
+/* Side-by-side panels are always the same height */
+.grid2 > section { display: flex; flex-direction: column; min-width: 0; }
+.grid2 > section > .panel, .grid2 > section > form.panel { flex: 1; }

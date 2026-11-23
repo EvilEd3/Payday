@@ -48,6 +48,7 @@
     <li><span class="key-d2d" aria-hidden="true"></span> Day to day</li>
     <li><span class="key-bills" aria-hidden="true"></span> Bills</li>
     {% if dash.planned_per_day > 0 %}<li><span class="key-target" aria-hidden="true"></span> Where you started: {{ dash.planned_per_day|money }} a day.</li>{% endif %}
+    {% if ' cut"' in daily_chart %}<li><span class="key-cut" aria-hidden="true"></span> Very large bill days are shortened to fit; the label shows the full amount.</li>{% endif %}
     {% if c.pending_count %}<li><span class="key-pending" aria-hidden="true"></span> Not settled yet: {{ c.pending_total|money }}, shown on the day you made the purchase.</li>{% endif %}
   </ul>
   <div class="panel">{{ daily_chart }}</div>
@@ -74,27 +75,83 @@
 {% endif %}
 
 {% if c.offset == 0 %}
-<section class="section">
-  <h2>Bank balance check</h2>
-  <div class="panel check">
-    <table class="ledger nosort nosearch"><tbody>
-      <tr><td>In budget accounts now</td><td class="num">{{ dash.balance|money }}</td></tr>
-      <tr><td>Bills still to come</td><td class="num due">−{{ dash.to_come|money }}</td></tr>
-      {% if dash.buffer %}<tr><td>Safety buffer</td><td class="num">−{{ dash.buffer|money }}</td></tr>{% endif %}
-      <tr class="total"><td>Free to spend</td><td class="num {{ 'pos' if dash.free >= 0 else 'neg' }}">{{ dash.free|money }}</td></tr>
-      <tr><td>÷ Days until payday, including today</td><td class="num">{{ dash.days_left }}</td></tr>
-      <tr class="total"><td>A day, by your bank balance</td><td class="num {{ 'pos' if dash.per_day >= 0 else 'neg' }}">{{ dash.per_day|money }}</td></tr>
-    </tbody></table>
-    {% if dash.income > 0 %}{% set gap = dash.free - dash.budget_left %}
-    <p class="muted small" style="margin:.75rem 0 0">
-      {% if gap|abs < 1 %}This matches your pay-period budget.
-      {% elif gap > 0 %}Your bank holds {{ gap|money }} more than this pay’s budget leaves, usually money left over from earlier pays.
-      {% else %}Your bank holds {{ (-gap)|money }} less than this pay’s budget leaves, usually money moved to savings or a bill paid from an account that isn’t counted.{% endif %}
-    </p>{% endif %}
-  </div>
-</section>
-{% endif %}
-
+<div class="grid2 two section">
+  <section>
+    <h2>Bank balance check</h2>
+    <div class="panel check">
+      <table class="ledger nosort nosearch"><tbody>
+        <tr><td>In budget accounts now</td><td class="num">{{ dash.balance|money }}</td></tr>
+        <tr><td>Bills still to come</td><td class="num due">−{{ dash.to_come|money }}</td></tr>
+        {% if dash.buffer %}<tr><td>Safety buffer</td><td class="num">−{{ dash.buffer|money }}</td></tr>{% endif %}
+        <tr class="total"><td>Free to spend</td><td class="num {{ 'pos' if dash.free >= 0 else 'neg' }}">{{ dash.free|money }}</td></tr>
+        <tr><td>÷ Days until payday, including today</td><td class="num">{{ dash.days_left }}</td></tr>
+        <tr class="total"><td>A day, by your bank balance</td><td class="num {{ 'pos' if dash.per_day >= 0 else 'neg' }}">{{ dash.per_day|money }}</td></tr>
+      </tbody></table>
+      {% if dash.income > 0 %}{% set gap = dash.free - dash.budget_left %}
+      <p class="muted small" style="margin:.75rem 0 0">
+        {% if gap|abs < 1 %}This matches your pay-period budget.
+        {% elif gap > 0 %}Your bank holds {{ gap|money }} more than this pay’s budget leaves, usually money left over from earlier pays.
+        {% else %}Your bank holds {{ (-gap)|money }} less than this pay’s budget leaves, usually money moved to savings or a bill paid from an account that isn’t counted.{% endif %}
+      </p>{% endif %}
+    </div>
+  </section>
+  <section>
+    <h2>Top payees</h2>
+    <div class="panel flush"><table class="nosearch">
+      <thead><tr><th>Payee</th><th class="num">Visits</th><th class="num">Spent</th></tr></thead>
+      <tbody>
+      {% for g in c.payees %}
+      <tr><td><a href="/payees/detail?name={{ g.name|urlencode }}">{{ g.name }}</a></td><td class="num">{{ g.count }}</td><td class="num">{{ g.out|money }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">No spending yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+<div class="grid2 two section">
+  <section>
+    <h2>Tags</h2>
+    <div class="panel flush"><table class="nosearch">
+      <thead><tr><th>Tag</th><th class="num">Items</th><th class="num">Spent</th></tr></thead>
+      <tbody>
+      {% for tag, amt, n in c.tags[:8] %}
+      <tr><td><a href="/transactions?tag={{ tag|urlencode }}">#{{ tag }}</a></td><td class="num">{{ n }}</td><td class="num">{{ amt|money }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">No tagged spending this period. Add tags to a transaction from its ⋯ menu.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+  <section>
+    <h2>Categories against your limits</h2>
+    <div class="panel flush"><table class="nosearch">
+      <thead><tr><th>Category</th><th class="num">Spent</th><th class="num">Of limit</th><th class="num">Change</th></tr></thead>
+      <tbody>
+      {% for name, amt, cid in c.categories[:8] %}
+      {% set lim = limits.get(cid) %}
+      <tr><td><a href="/transactions?category={{ cid }}{{ o }}">{{ name }}</a></td><td class="num">{{ amt|money }}</td>
+          <td class="num" data-sort="{{ (amt / lim.limit) if lim else 0 }}">{% if lim %}<span class="{{ 'neg' if amt > lim.limit else ('due' if amt >= lim.limit * 0.8 else '') }}">{{ (amt / lim.limit * 100)|round|int }}%</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+          <td class="num">{% set v = cat_change[name] %}{% if v is none %}<span class="muted">new</span>{% else %}<span class="{{ 'pos' if v <= 0 else 'neg' }}">{{ v|pct }}</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="4" class="muted">No spending yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+<div class="section">
+  <section class="solo">
+    <h2>Bills and subscriptions</h2>
+    <div class="panel flush"><table class="nosearch">
+      <thead><tr><th>Bill</th><th>Status</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+      {% for p in dash.paid %}
+      <tr><td><a href="/bills/{{ p.bill.id }}">{{ p.bill.name }}</a></td><td class="muted" data-sort="{{ p.txn.date.isoformat() }}">{{ 'Pending' if p.pending else 'Paid' }} {{ p.txn.date|nice }}</td><td class="num">{{ (-p.txn.amount)|money }}</td></tr>
+      {% endfor %}
+      {% for u in dash.upcoming %}
+      <tr><td><a href="/bills/{{ u.bill.id }}">{{ u.bill.name }}</a></td><td data-sort="{{ u.due.isoformat() }}" class="{{ 'neg' if u.overdue else 'due' }}">{{ 'Not seen, was due' if u.overdue else 'Due' }} {{ u.due|nice }}</td><td class="num">{{ u.bill.amount|money }}</td></tr>
+      {% endfor %}
+      {% if not dash.paid and not dash.upcoming %}<tr><td colspan="3" class="muted">No bills due this period. <a href="/bills">Add your bills</a>.</td></tr>{% endif %}
+      </tbody>
+    </table></div>
+  </section>
+</div>
+{% else %}
 <div class="grid2 two section">
   <section>
     <h2>Top payees</h2>
@@ -118,6 +175,8 @@
       </tbody>
     </table></div>
   </section>
+</div>
+<div class="grid2 two section">
   <section>
     <h2>Categories against your limits</h2>
     <div class="panel flush"><table class="nosearch">
@@ -148,4 +207,5 @@
     </table></div>
   </section>
 </div>
+{% endif %}
 {% endblock %}

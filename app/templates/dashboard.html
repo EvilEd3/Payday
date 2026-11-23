@@ -90,6 +90,13 @@
     {% if not d.upcoming and not d.paid %}
     <p class="muted empty-note">No bills due{% if not d.is_past %}. <a href="/bills">Add your recurring bills</a> to see what’s still to come{% endif %}.</p>
     {% else %}
+    {% set overdue = d.upcoming|selectattr('overdue')|map(attribute='bill.amount')|sum %}
+    <dl class="billsums">
+      <div class="paid"><dt>Paid</dt><dd>{{ (d.bills_paid - d.bills_pending)|money }}</dd></div>
+      <div class="pend"><dt>Pending</dt><dd>{{ d.bills_pending|money }}</dd></div>
+      <div class="due"><dt>{{ 'Missed' if d.is_past else 'To come' }}</dt><dd>{{ d.to_come|money }}</dd>{% if overdue and not d.is_past %}<small>{{ overdue|money }} overdue</small>{% endif %}</div>
+      <div class="all"><dt>All bills</dt><dd>{{ d.bills_total|money }}</dd></div>
+    </dl>
     <ul class="billrows">
       {% for u in d.upcoming %}
       <li class="{{ 'late' if u.overdue else 'due' }}">
