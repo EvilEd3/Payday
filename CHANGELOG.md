@@ -2,6 +2,10 @@
 
 Each release has a Docker image at `ghcr.io/eviled3/payday:<version>`. Database changes are applied when Payday starts.
 
+Note changes under **Unreleased** as they're made. When releasing, rename that heading to the new version number.
+
+## Unreleased
+
 ## 1.0.0
 
 First public release.
@@ -13,7 +17,8 @@ First public release.
 - **Goals**: save towards a target by a date, from a linked savings account or amounts added by hand, with the amount
   needed each pay, week and day, an on-track check and a projected date. Optionally budgeted like a bill.
 - **Summary**: income, spending, categories, payees, tags, bills, daily spending and a day-rate chart with a warning line.
-- **Transactions**: search as you type, notes and tags on every line, choose which columns to show, rules that learn.
+- **Transactions**: search as you type, notes and tags on every line, choose and resize columns, rules that learn.
+- **Overview** bill totals: paid, pending, to come and overdue.
 - **Mortgage** tracker with history import, forecasts and what-ifs.
 - **Households** with invites, read-only members, and one login across several households.
 - **Security**: two-step sign-in for everyone, encrypted bank tokens, passphrase-locked backups, CSV export.
