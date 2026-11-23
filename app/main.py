@@ -36,7 +36,7 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
 from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
                  PropertyValue, Rule, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
-from .insights import (Ctx, bars, category_averages, category_limits, change, detect_subscriptions, donut,
+from .insights import (Ctx, bars, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
                        needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups)
 from .forecast import account_balance, bank_balance, build_dashboard, counts_as_day_to_day
 from .periods import FREQUENCIES, get_cycle, period_of
@@ -1731,10 +1731,17 @@ def summary(request: Request, offset: int = 0, s: Session = Depends(session)):
                           highlight=[t is not None for t in trend],
                           axis=[d["date"].strftime("%-d") for d in cur["daily"]], show_values=not is_private(),
                           low=[t is not None and warn is not None and t < warn for t in trend], height=140)
-    where = [("Bills", cur["bills"], f"/transactions?view=bills{o}"),
-             ("Day to day", cur["day_to_day"], f"/transactions?view=daytoday{o}")]
-    if cur["saved"] > 0:
-        where.append(("Kept", cur["saved"], f"/?offset={offset}" if offset else "/"))
+    # While the period is still running, bills still to come aren't kept money yet: take them off "Kept",
+    # and show them as their own slice of where the income went.
+    in_progress = offset == 0 and today() < cur["end"]
+    to_come = dash["to_come"] if in_progress else 0.0
+    kept = cur["saved"] - to_come
+    where = [("Bills", cur["bills"], f"/transactions?view=bills{o}")]
+    if to_come > 0:
+        where.append(("Bills to come", to_come, "/#bills"))
+    where.append(("Day to day", cur["day_to_day"], f"/transactions?view=daytoday{o}"))
+    if kept > 0:
+        where.append(("Kept so far" if in_progress else "Kept", kept, f"/?offset={offset}" if offset else "/"))
     prev_cats = {name: v for name, v, _ in prev["categories"]}
     cat_change = {name: change(v, prev_cats.get(name, 0)) for name, v, _ in cur["categories"]}
     cat_slices = [(name, v, f"/transactions?category={cid}{o}") for name, v, cid in cur["categories"]]
@@ -1752,7 +1759,8 @@ def summary(request: Request, offset: int = 0, s: Session = Depends(session)):
         "day_rate": day_rate, "rate_chart": rate_chart, "warn": warn,
         "chg": {"spent": change(cur["spent"], prev["spent"]), "income": change(cur["income"], prev["income"]),
                 "per_day": change(cur["per_day"], prev["per_day"]), "day_to_day": change(cur["day_to_day"], prev["day_to_day"])},
-        "cat_change": cat_change, "limits": dash["limits"]})
+        "cat_change": cat_change, "limits": dash["limits"],
+        "kept": kept, "in_progress": in_progress, "to_come": to_come})
 
 
 def rate_warning(s: Session) -> float | None:
@@ -2123,7 +2131,7 @@ def settings_page(request: Request, tab: str = "", s: Session = Depends(session)
     elif tab == "limits":
         c = Ctx(s, today())
         ctx.update(cats=[x for x in cats if x.kind == "expense"], limits=category_limits(c, 0),
-                   averages=category_averages(c, 0))
+                   averages=usual_spend(c, 0))
     elif tab == "rules":
         rules = s.exec(select(Rule)).all()
         cat_names = {c.id: c.name for c in cats}
