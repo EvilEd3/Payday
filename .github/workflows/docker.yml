@@ -80,6 +80,6 @@ jobs:
           v="${GITHUB_REF_NAME#v}"
           awk -v v="$v" '$0 ~ "^## " {on = ($2 == v)} on' CHANGELOG.md | tail -n +2 > notes.md
           printf '\n**Docker image:** `ghcr.io/%s/payday:%s`\n' "${GITHUB_REPOSITORY_OWNER,,}" "$v" >> notes.md
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           body_path: notes.md
