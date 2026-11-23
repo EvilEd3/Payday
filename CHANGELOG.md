@@ -6,6 +6,12 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+**Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set
+`PUBLIC_URL` to that https address, or password-reset and email-check links won't be sent. If that proxy isn't on the
+same machine or your local network, also set `TRUSTED_PROXIES` to its address.
+
+- **TrueNAS guide** ([docs/truenas.md](docs/truenas.md)): installing Payday as a custom app on TrueNAS SCALE, and
+  updating or rolling back.
 - **Security fixes** from a review:
   - Emailed links (password resets, email checks, approvals) no longer use the address the request was sent to,
     which a stranger could set to their own site. They use `PUBLIC_URL`, or a local address when it isn't set.
