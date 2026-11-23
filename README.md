@@ -82,7 +82,9 @@ check the policies first.
 
 | Setting | |
 |---|---|
-| `PUBLIC_URL` | The https address people use. Payday then only answers to it, localhost and your local network. |
+| `PUBLIC_URL` | The https address people use. Payday then only answers to it, localhost and your local network. Emailed links (password resets, email checks) use it; without it, they're only sent when Payday was reached by a local address. |
+| `TRUSTED_PROXIES` | Addresses or networks of proxies whose `CF-Connecting-IP`, `X-Forwarded-For` and `X-Forwarded-Proto` headers are believed. Default: this machine and private networks (covers cloudflared or a reverse proxy in Docker or on your network). |
+| `PUSH_HOSTS` | Extra push service hosts for notifications, comma separated. Google, Mozilla, Apple and Microsoft's are built in. |
 | `DATABASE_URL` / `DATABASE_URL_FILE` | `sqlite:////data/budget.db` (default) or `postgresql://user:pass@host/db`. |
 | `PAYDAY_KEY` / `PAYDAY_KEY_FILE` | Encrypts bank tokens and 2FA keys. Created as `/data/payday.key` if not set; back it up with the database. |
 | `AKAHU_CLIENT_ID`, `AKAHU_CLIENT_SECRET` | An approved Akahu Full App, for Connect your bank. Redirect: `PUBLIC_URL/bank/callback`. |

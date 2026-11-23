@@ -28,6 +28,7 @@ NAMES = {"app": "AKAHU_APP_TOKEN", "user": "AKAHU_USER_TOKEN"}
 
 KEY_FILE = Path(os.getenv("PAYDAY_KEY_FILE") or data_dir() / "payday.key")
 _key_cache: bytes | None = None
+MIN_KEY = 32  # characters; shorter keys still work (changing it would lock out saved tokens) but get a warning
 
 
 def _key() -> bytes:
@@ -37,6 +38,9 @@ def _key() -> bytes:
         return _key_cache
     if os.getenv("PAYDAY_KEY"):  # several copies of the app (cloud) share one key from a secret
         _key_cache = os.environ["PAYDAY_KEY"].strip().encode()
+        if len(_key_cache) < MIN_KEY:
+            print(f"[payday] PAYDAY_KEY is only {len(_key_cache)} characters. Use at least {MIN_KEY} random ones, e.g. "
+                  "the output of: python -c \"import secrets; print(secrets.token_urlsafe(32))\"", flush=True)
         return _key_cache
     try:
         raw = KEY_FILE.read_bytes().strip()

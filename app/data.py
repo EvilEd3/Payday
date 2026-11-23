@@ -26,8 +26,10 @@ from .db import (PG, PROFILE_TABLES, SITE_TABLES, HeldUpload, Profile, Setting, 
 
 FORMAT, VERSION = "payday-profile-backup", 1
 SECRET_SETTINGS = {"akahu_tokens", "akahu_test", "last_sync_log", "legacy_env_tokens"}
-MAX_UPLOAD = 100 * 1024 * 1024  # bytes, compressed
-MAX_JSON = 400 * 1024 * 1024  # bytes, once unzipped
+# A household with years of transactions makes a backup of a few MB, so these leave lots of room while stopping
+# one upload from using up the server's memory.
+MAX_UPLOAD = 25 * 1024 * 1024  # bytes, compressed
+MAX_JSON = 100 * 1024 * 1024  # bytes, once unzipped
 LOCKED = b"PAYDAY-LOCKED-1\n"  # start of a passphrase-locked backup
 MODELS = {m.__table__.name: m for m in SQLModel.__subclasses__() if hasattr(m, "__table__")}
 

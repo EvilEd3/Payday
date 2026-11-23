@@ -6,6 +6,20 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Security fixes** from a review:
+  - Emailed links (password resets, email checks, approvals) no longer use the address the request was sent to,
+    which a stranger could set to their own site. They use `PUBLIC_URL`, or a local address when it isn't set.
+  - Sign-in limits can't be dodged any more: forwarding headers are only believed from proxies on this machine or
+    your network (`TRUSTED_PROXIES`), and flooding the limiter with junk names no longer resets every counter.
+  - A wrong password no longer holds a server thread for a second, so a burst of them can't slow Payday for everyone.
+  - Notifications can only be sent to the browsers' own push services, and a device can't be moved to another login.
+  - Regular-expression rules give up after a moment instead of hanging on patterns like `(a+)+$`, and are limited to
+    200 characters.
+  - Smaller limits on restore uploads (25 MB file, 100 MB unpacked), a 256-character limit on passwords, a warning
+    for a short `PAYDAY_KEY`, and a safer redirect after the privacy toggle.
+- **Tests**: a first set of automated tests (`pytest tests`), run with a dependency check on every push and pull
+  request before the image is built. GitHub Actions are pinned to exact versions, with Dependabot keeping them,
+  the Python packages and the base image up to date.
 - **Refunds take spending back off**: money back from a shop you spend with goes to that shop's category instead
   of counting as income, so a return no longer raises your daily amount. It's marked "Looks like a refund" for review.
 - **Bills no longer look like overspending**: a category's usual amount is now its day-to-day spending plus the
@@ -13,7 +27,7 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
   over-limit alert.
 - **Summary's "Kept" waits for bills to come**: while a pay is still running it reads "Kept so far" with the bills
   still to come taken off, and "Where your income went" shows them as their own slice.
-- **Tests**: a first set for the daily-number maths (`python -m pytest`).
+- **Tests** for the daily-number maths: refunds, bills against limits.
 
 - **Notifications** on your phone or computer (Settings, Notifications), chosen per person and per household:
   bills coming up or missed, pay landed, day rate under your warning line, category limits, big purchases, sync

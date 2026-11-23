@@ -270,15 +270,51 @@ def _host_ok(host: str) -> bool:
         return False
 
 
+def _networks(raw: str) -> list:
+    nets = []
+    for part in raw.split(","):
+        try:
+            nets.append(ipaddress.ip_network(part.strip(), strict=False))
+        except ValueError:
+            if part.strip():
+                print(f"[payday] TRUSTED_PROXIES: ignoring {part.strip()!r}, not an address or network.", flush=True)
+    return nets
+
+
+# Proxies whose forwarding headers (CF-Connecting-IP, X-Forwarded-For, X-Forwarded-Proto) are believed. By default
+# this machine and private networks, which covers cloudflared or a reverse proxy in Docker or on your own network.
+# Anyone else could put any address in those headers, and get round the sign-in limits by doing so.
+TRUSTED_PROXIES = _networks(os.getenv("TRUSTED_PROXIES", "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,"
+                                                         "192.168.0.0/16,fc00::/7"))
+
+
+def _from_trusted_proxy(request: Request) -> bool:
+    try:
+        peer = ipaddress.ip_address(request.client.host if request.client else "")
+    except ValueError:
+        return False
+    return any(peer in net for net in TRUSTED_PROXIES)
+
+
 def is_https(request: Request) -> bool:
-    return (request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
-            or '"https"' in request.headers.get("cf-visitor", ""))
+    if request.url.scheme == "https":
+        return True
+    return _from_trusted_proxy(request) and (request.headers.get("x-forwarded-proto", "").lower() == "https"
+                                             or '"https"' in request.headers.get("cf-visitor", ""))
 
 
 def client_ip(request: Request) -> str:
-    """The visitor's address. Behind a Cloudflare tunnel every request arrives from cloudflared, so use the
-    address Cloudflare passes on."""
-    return (request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "")).strip()[:64]
+    """The visitor's address. Behind a Cloudflare tunnel or a reverse proxy every request arrives from the proxy,
+    so use the address it passes on, but only when the request really came from a trusted proxy."""
+    peer = (request.client.host if request.client else "")
+    if _from_trusted_proxy(request):
+        forwarded = (request.headers.get("cf-connecting-ip") or request.headers.get("x-real-ip")
+                     or request.headers.get("x-forwarded-for", "").split(",")[-1]).strip()
+        try:
+            return str(ipaddress.ip_address(forwarded))
+        except ValueError:
+            pass
+    return peer.strip()[:64]
 
 
 def _deny(message: str, status: int) -> Response:
@@ -405,13 +441,26 @@ templates.env.globals["here"] = _here
 # Guessing limits. Per device: 8 wrong tries in 10 minutes. Per account, from anywhere: 20 in an hour.
 MAX_FAILS, FAIL_WINDOW = 8, 600
 MAX_ACCOUNT_FAILS, ACCOUNT_WINDOW = 20, 3600
+MAX_KEYS = 20000  # memory cap for the counters below
 _failures: dict[str, list[float]] = {}
+
+
+def _trim_failures(now: float) -> None:
+    """Keep the counters' memory bounded without ever wiping them all at once (that would let someone reset an
+    account's limit by flooding junk names). Expired entries go first, then the ones with the fewest recent failures,
+    so a busy account's counter is the last thing to be dropped."""
+    for key in [k for k, v in _failures.items() if not v or now - v[-1] >= ACCOUNT_WINDOW]:
+        del _failures[key]
+    if len(_failures) > MAX_KEYS:
+        by_weight = sorted(_failures, key=lambda k: (len(_failures[k]), _failures[k][-1]))
+        for key in by_weight[:len(_failures) - MAX_KEYS // 2]:
+            del _failures[key]
 
 
 def _recent_failures(key: str, window: int = FAIL_WINDOW) -> list[float]:
     now = time.time()
-    if len(_failures) > 5000:
-        _failures.clear()
+    if len(_failures) > MAX_KEYS:
+        _trim_failures(now)
     recent = [t for t in _failures.get(key, []) if now - t < window]
     _failures[key] = recent
     return recent
@@ -427,7 +476,8 @@ def _failed(request: Request, name: str) -> None:
     now = time.time()
     for key in (f"{client_ip(request)}|{name}", f"*|{name}", f"{client_ip(request)}|*"):
         _recent_failures(key, ACCOUNT_WINDOW).append(now)
-    time.sleep(1)  # slow down guessing
+    # No sleep here: these handlers share the server's thread pool, so sleeping would let a burst of wrong
+    # passwords stall every page for everyone. The counters above are what limit guessing.
 
 
 def _cookie_opts(request: Request) -> dict:
@@ -592,9 +642,39 @@ def setup(request: Request, username: str = Form(...), password: str = Form(...)
 
 
 # ---------- Joining a profile, and password resets, by one-time link ----------
+def _local_host(host: str) -> bool:
+    """localhost, or an address on this machine or your own network."""
+    name = host.rsplit(":", 1)[0].strip("[]").lower() if host.count(":") <= 1 or host.startswith("[") else host.strip("[]").lower()
+    if name in ("localhost", "testserver"):
+        return True
+    try:
+        ip = ipaddress.ip_address(name)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback
+
+
 def _link(request: Request, path: str) -> str:
+    """A full link to a page here. Uses PUBLIC_URL when set. Without it the address comes from the request, which
+    is only safe for links shown to the person who made the request; emails use _email_link instead."""
     base = PUBLIC_URL or f"{'https' if is_https(request) else 'http'}://{request.headers.get('host', '')}"
     return f"{base}{path}"
+
+
+def _email_link(request: Request, path: str) -> str | None:
+    """A link to put in an email, or None if there's no address we can trust.
+
+    Without PUBLIC_URL the Host header is whatever the sender typed, so a stranger could ask for someone's password
+    reset with Host: their-site.example and the email would carry a real reset link to their site. So without
+    PUBLIC_URL, only addresses on this machine or your own network are used."""
+    if PUBLIC_URL:
+        return f"{PUBLIC_URL}{path}"
+    host = request.headers.get("host", "")
+    if host and _local_host(host):
+        return _link(request, path)
+    print(f"[payday] Not emailing a link: PUBLIC_URL isn't set and the request came to {host[:80]!r}. "
+          "Set PUBLIC_URL to Payday's https address.", flush=True)
+    return None
 
 
 @app.get("/invite/{token}")
@@ -685,9 +765,12 @@ def signup_mode() -> str:
 
 def _send_verify(request: Request, s: Session, user: User) -> None:
     token = make_invite(s, "verify", user.id, user_id=user.id, note=user.email or "", days=2)
+    link = _email_link(request, "/verify/" + token)
+    if not link:
+        return
     mailer.send(user.email, "Confirm your email address",
                 f"Hi {user.username},\n\nOpen this link to confirm your email address for Payday:\n\n"
-                f"{_link(request, '/verify/' + token)}\n\nThe link works once and lasts 48 hours. "
+                f"{link}\n\nThe link works once and lasts 48 hours. "
                 "If you didn’t ask for this, ignore this email.")
 
 
@@ -782,7 +865,7 @@ def verify_email(request: Request, token: str, s: Session = Depends(site_session
             for owner in s.exec(select(User).where(User.is_owner == True, User.email_verified == True)):  # noqa: E712
                 mailer.send(owner.email, "New Payday sign-up to approve",
                             f"{user.username} ({user.email}) signed up for the household “{user.signup_household}”.\n\n"
-                            f"Approve or decline: {_link(request, '/site')}")
+                            f"Approve or decline: {_email_link(request, '/site') or 'Site, in Payday'}")
             return _login_page(request, step="pending")
     return back("/login?msg=verified")
 
@@ -797,11 +880,12 @@ def forgot(request: Request, email: str = Form(...), s: Session = Depends(site_s
     if not _blocked(request, "forgot"):
         _failed_quiet(request, "forgot")
         user = s.exec(select(User).where(User.email == email.strip().lower(), User.email_verified == True)).first()  # noqa: E712
-        if user:
+        link = _email_link(request, "/reset/") if user else None
+        if user and link:
             token = make_invite(s, "reset", user.id, user_id=user.id, note="Forgotten password", days=1)
             mailer.send(user.email, "Reset your Payday password",
                         f"Hi {user.username},\n\nOpen this link to choose a new password (it works once, for 24 hours):\n\n"
-                        f"{_link(request, '/reset/' + token)}\n\nYou’ll still need your authenticator code to sign in. "
+                        f"{link}{token}\n\nYou’ll still need your authenticator code to sign in. "
                         "If you didn’t ask for this, ignore this email; your password hasn’t changed.")
     return _login_page(request, step="forgotsent")
 
@@ -813,7 +897,7 @@ def site_approve(request: Request, user_id: int, s: Session = Depends(site_sessi
         _activate(s, user)
         if user.email:
             mailer.send(user.email, "Your Payday account is ready",
-                        f"Hi {user.username},\n\nYour account has been approved. Sign in here: {_link(request, '/login')}")
+                        f"Hi {user.username},\n\nYour account has been approved. Sign in here: {_email_link(request, '/login') or 'your Payday address'}")
     return _site("approved", who=user.username if user else "")
 
 
@@ -895,13 +979,16 @@ def push_subscribe(request: Request, endpoint: str = Form(""), p256dh: str = For
                    s: Session = Depends(site_session)):
     from . import webpush
     try:
-        ok = (endpoint.startswith("https://") and len(endpoint) < 1000 and len(webpush.unb64u(p256dh)) == 65
+        ok = (webpush.endpoint_ok(endpoint) and len(endpoint) < 1000 and len(webpush.unb64u(p256dh)) == 65
               and len(webpush.unb64u(auth)) == 16)
     except ValueError:
         ok = False
     if not ok:
         return JSONResponse({"ok": False}, status_code=400)
-    dev = s.exec(select(PushDevice).where(PushDevice.endpoint == endpoint)).first() or PushDevice(endpoint=endpoint, p256dh="", auth="")
+    dev = s.exec(select(PushDevice).where(PushDevice.endpoint == endpoint)).first()
+    if dev and dev.user_id != request.state.user.id:  # someone else's device: never move it to this login
+        return JSONResponse({"ok": False}, status_code=409)
+    dev = dev or PushDevice(endpoint=endpoint, p256dh="", auth="")
     dev.user_id, dev.p256dh, dev.auth = request.state.user.id, p256dh, auth
     dev.label = _device_label(request.headers.get("user-agent", ""))
     dev.created = dev.created or datetime.now(timezone.utc)
@@ -1210,7 +1297,7 @@ def toggle_privacy(request: Request, s: Session = Depends(site_session)):
     s.add(user)
     s.commit()
     ref = urlparse(request.headers.get("referer", "/"))
-    return back((ref.path or "/") + (f"?{ref.query}" if ref.query else ""))
+    return back(_safe_next((ref.path or "/") + (f"?{ref.query}" if ref.query else "")))
 
 
 @app.post("/sync")

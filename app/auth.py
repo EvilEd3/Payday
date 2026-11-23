@@ -25,6 +25,7 @@ current_user: ContextVar[Optional[User]] = ContextVar("current_user", default=No
 current_profile: ContextVar[Optional[Profile]] = ContextVar("current_profile_row", default=None)
 
 MIN_PASSWORD = 10
+MAX_PASSWORD = 256  # longer is no safer, and very long ones only make scrypt work harder
 COMMON = {"password", "password1", "password123", "1234567890", "12345678910", "qwertyuiop", "letmein123",
           "iloveyou12", "changeme12", "change-me-123", "welcome123", "payday1234", "administrator", "qwerty1234",
           "aotearoa123", "newzealand", "1q2w3e4r5t", "abc1234567", "monkey1234", "dragon1234", "football12"}
@@ -34,6 +35,8 @@ def password_problem(password: str, username: str = "") -> str:
     """Why a new password isn't good enough, or "" if it is."""
     if len(password) < MIN_PASSWORD:
         return f"Use at least {MIN_PASSWORD} characters. A few unrelated words is easiest to remember."
+    if len(password) > MAX_PASSWORD:
+        return f"Use at most {MAX_PASSWORD} characters."
     if password.lower() in COMMON or (username and username.lower() in password.lower()):
         return "That password is too easy to guess. Try a few unrelated words."
     if len(set(password)) < 4:
