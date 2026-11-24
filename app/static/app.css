@@ -908,6 +908,8 @@ input.tiny { width: 4.5rem; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
 
+.accrows small.neg { color: var(--rata); }
+
 /* ---- first-run steps in the pay card ---- */
 .paycard.setup h1 { margin: 0 0 .35rem; font-size: clamp(1.5rem, 4vw, 2rem); }
 .paycard.setup a { color: var(--on-hero); }

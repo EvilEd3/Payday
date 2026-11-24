@@ -60,9 +60,9 @@
 <section class="section admin-only narrow" id="edit">
   <h2>Edit bill</h2>
   {% set p = {'name': bill.name, 'amount': '%.2f'|format(bill.amount), 'frequency': bill.frequency, 'anchor_date': bill.anchor_date.isoformat(),
-              'match_pattern': bill.match_pattern, 'tolerance_pct': bill.tolerance_pct|round|int, 'window_days': bill.window_days, 'category_id': bill.category_id} %}
+              'match_pattern': bill.match_pattern, 'tolerance_pct': bill.tolerance_pct|round|int, 'window_days': bill.window_days, 'category_id': bill.category_id, 'account_id': bill.account_id} %}
   <form method="post" action="/bills/{{ bill.id }}" class="panel" style="margin-top:.75rem">
-    <div class="fields">{{ bill_fields(p, cats, today) }}</div>
+    <div class="fields">{{ bill_fields(p, cats, today, pay_accounts) }}</div>
     <label class="check" style="margin-top:.75rem"><input type="checkbox" name="active" value="true" {% if bill.active %}checked{% endif %}> Active. Untick to pause this bill without losing its history.</label>
     <div class="actions" style="margin-top:.75rem"><button>Save changes</button></div>
   </form>

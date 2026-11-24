@@ -211,6 +211,7 @@ class Bill(SQLModel, table=True):
     window_days: int = 4  # how far either side of due date a payment can land
     category_id: Optional[int] = Field(default=None, foreign_key="category.id")
     active: bool = True
+    account_id: Optional[str] = None  # the account it comes out of; None = worked out from its past payments
 
 
 class Transaction(SQLModel, table=True):
@@ -438,6 +439,7 @@ NEW_COLUMNS = {  # added to profile databases after the first release
                 ("nickname", "VARCHAR NOT NULL DEFAULT ''"), ("meta", "VARCHAR NOT NULL DEFAULT ''"),
                 ("bank_status", "VARCHAR NOT NULL DEFAULT ''"), ("refreshed_txns", "VARCHAR NOT NULL DEFAULT ''"),
                 ("refreshed_balance", "VARCHAR NOT NULL DEFAULT ''")],
+    "bill": [("account_id", "VARCHAR")],
     "category": [("limit_mode", "VARCHAR NOT NULL DEFAULT 'auto'"), ("limit_amount", "FLOAT")],
     "rule": [("direction", "VARCHAR NOT NULL DEFAULT 'any'"), ("min_amount", "FLOAT"),
              ("max_amount", "FLOAT"), ("account_id", "VARCHAR")],

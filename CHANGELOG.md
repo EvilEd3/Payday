@@ -6,6 +6,11 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Know before an account runs short**: the Overview follows each account through the bills still due before payday
+  and warns when one won't cover them, naming the bills and the day. Each account shows where it'll be after its
+  bills. A bill comes out of the account its last payment did, or one you pick (Bills, edit a bill, Comes out of).
+  There's a matching notification, on by default (Settings, Notifications).
+
 - **A heads-up when your bank can't cover the daily amount**: if the accounts you count hold noticeably less than
   this pay's budget expects (often money moved to savings), the Overview says so and links to the bank check.
 - **Payee names keep their initials**: "ANZ Home Loan" and "AA Insurance" instead of "Anz" and "Aa".

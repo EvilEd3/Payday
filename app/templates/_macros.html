@@ -18,7 +18,7 @@
 {% macro category_options(cats, selected) %}{% for c in cats %}<option value="{{ c.id }}" {% if c.id == selected %}selected{% endif %}>{{ c.name }}</option>{% endfor %}{% endmacro %}
 
 {# The fields shared by "add a bill" and "edit a bill". p = values to show. #}
-{% macro bill_fields(p, cats, today) %}
+{% macro bill_fields(p, cats, today, accounts=[]) %}
   <label>Name <input name="name" required maxlength="80" placeholder="Power" value="{{ p.get('name', '') }}"></label>
   <label>Usual amount ($) <input class="amt-in" name="amount" type="number" step="0.01" min="0.01" required placeholder="180.00" value="{{ p.get('amount', '') }}"></label>
   <label>How often
@@ -32,6 +32,9 @@
   <label>Category
     <select name="category_id"><option value="">Bills</option>
       {% for c in cats if c.kind == 'expense' and c.name not in ['Bills', 'Uncategorised'] %}<option value="{{ c.id }}" {% if c.id == p.get('category_id') %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></label>
+  {% if accounts %}<label>Comes out of
+    <select name="account_id"><option value="">Work it out from its payments</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {% if a.id == p.get('account_id') %}selected{% endif %}>{{ a.name }}</option>{% endfor %}</select></label>{% endif %}
 {% endmacro %}
 
 {# The condition fields shared by "new rule" and "edit rule". form = id of the form they belong to. #}

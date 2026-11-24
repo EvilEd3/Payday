@@ -1613,7 +1613,7 @@ def bills_page(request: Request, from_txn: str | None = None, s: Session = Depen
         "bills": bills, "status": status, "start": start, "end": end, "suggestions": suggestions,
         "cats": s.exec(select(Category).order_by(Category.name)).all(),
         "today": today(), "prefill": prefill, "bill_msg": request.query_params.get("bill", ""),
-        "page": "bills"})
+        "pay_accounts": _pay_accounts(s), "page": "bills"})
 
 
 @app.post("/bills/suggestions/dismiss")
@@ -1631,22 +1631,28 @@ def reset_suggestions(s: Session = Depends(session)):
 
 
 def _bill_values(name: str, amount: float, frequency: str, match_pattern: str, tolerance_pct: float,
-                 window_days: int, category_id: str, s: Session) -> dict | None:
+                 window_days: int, category_id: str, s: Session, account_id: str = "") -> dict | None:
     """Checked form values for a bill, or None if they can't make a working bill."""
     if not name.strip() or abs(amount) < 0.005 or frequency not in APPROX_DAYS or not valid_pattern(match_pattern):
         return None
     cid = int(category_id) if category_id.isdigit() and s.get(Category, int(category_id)) else None
     return dict(name=name.strip()[:80], amount=round(abs(amount), 2), frequency=frequency,
                 match_pattern=match_pattern.strip(), tolerance_pct=min(max(tolerance_pct, 0), 100),
-                window_days=min(max(window_days, 0), 31), category_id=cid)
+                window_days=min(max(window_days, 0), 31), category_id=cid,
+                account_id=account_id if account_id and s.get(Account, account_id) else None)
+
+
+def _pay_accounts(s: Session) -> list[Account]:
+    """Accounts a bill can come out of: everything but loans."""
+    return [a for a in s.exec(select(Account).order_by(Account.name)) if a.type != "LOAN"]
 
 
 @app.post("/bills")
 def add_bill(name: str = Form(...), amount: float = Form(...), frequency: str = Form(...),
              anchor_date: date = Form(...), match_pattern: str = Form(...),
              tolerance_pct: float = Form(10), window_days: int = Form(4),
-             category_id: str = Form(""), s: Session = Depends(session)):
-    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s)
+             category_id: str = Form(""), account_id: str = Form(""), s: Session = Depends(session)):
+    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s, account_id)
     if not values:
         return back("/bills?bill=bad#add")
     s.add(Bill(anchor_date=anchor_date, **values))
@@ -1674,7 +1680,7 @@ def bill_detail(request: Request, bill_id: int, s: Session = Depends(session)):
     return templates.TemplateResponse(request, "bill_detail.html", {
         "bill": bill, "linked": linked, "missed": missed[-6:], "upcoming": upcoming, "pending": pending,
         "avg": sum(amounts) / len(amounts) if amounts else 0,
-        "accounts": {a.id: a for a in s.exec(select(Account))},
+        "accounts": {a.id: a for a in s.exec(select(Account))}, "pay_accounts": _pay_accounts(s),
         "cats": s.exec(select(Category).order_by(Category.name)).all(),
         "today": t0, "bill_msg": request.query_params.get("bill", ""), "page": "bills"})
 
@@ -1684,9 +1690,9 @@ def edit_bill(bill_id: int, name: str = Form(...), amount: float = Form(...),
               frequency: str = Form(...), anchor_date: date = Form(...),
               match_pattern: str = Form(...), tolerance_pct: float = Form(10),
               window_days: int = Form(4), category_id: str = Form(""), active: bool = Form(False),
-              s: Session = Depends(session)):
+              account_id: str = Form(""), s: Session = Depends(session)):
     bill = s.get(Bill, bill_id)
-    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s)
+    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s, account_id)
     if not bill:
         return back("/bills")
     if not values:
