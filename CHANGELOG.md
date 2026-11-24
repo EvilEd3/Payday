@@ -6,6 +6,8 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+## 1.3.0
+
 - **Loans**: the Mortgage page is now Loans, and holds as many loans as you have: a mortgage, a car loan, a
   personal loan. Open one from its loan account (Settings, Accounts, or the account's page) or from More, Loans.
   Each loan shows what's owed, when it'll be paid off, interest paid and still to come, the rate history, and
