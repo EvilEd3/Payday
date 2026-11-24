@@ -9,7 +9,7 @@
     <h1>{{ acc.name }}</h1>
     <p class="sub">{% if acc.nickname and acc.bank_name and acc.bank_name != acc.nickname %}{{ acc.bank_name }}, {% endif %}{{ acc.institution }}{{ ', ' if acc.institution }}{{ acc.type|acctype }}{% if last_sync %}. As of the last sync, {{ last_sync }}{% endif %}</p>
   </div>
-  {% if acc.type == 'LOAN' %}<a class="btn quiet small" href="{{ '/mortgage' if has_loan() else '/mortgage/setup' }}">Mortgage {{ 'summary' if has_loan() else 'setup' }}</a>{% endif %}
+  {% if acc.type == 'LOAN' %}<a class="btn quiet small" href="/loans/account/{{ acc.id }}">Loan details</a>{% endif %}
   {% if not all %}{{ period_nav('/accounts/' ~ acc.id, offset, start, end) }}{% endif %}
 </div>
 

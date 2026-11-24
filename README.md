@@ -20,7 +20,7 @@ and divides what's left by the days until you're paid again.
 - **Transactions**: search as you type, notes and tags on every line, choose your columns, rules that learn from you,
   and a review list for Payday's guesses.
 - **Account reconciling** with running balances that match your banking app.
-- **Mortgage** tracker: history import, forecasts, extra-repayment and refix what-ifs, equity and milestones.
+- **Loans**: mortgages, car and personal loans with weekly, fortnightly or monthly repayments. History import, payoff forecasts, extra-repayment and refix what-ifs, equity or a car's resale value, and milestones.
 - **Households**: invite your partner (admin or read only); one login can belong to several households.
 - **Secure by default**: two-step sign-in for everyone, encrypted bank tokens, backups you can lock with a passphrase.
 - Light and dark themes in five colour schemes, a badge of your own, works on phones, installs as an app.

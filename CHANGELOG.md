@@ -6,6 +6,20 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+## 1.3.0
+
+- **Loans**: the Mortgage page is now Loans, and holds as many loans as you have: a mortgage, a car loan, a
+  personal loan. Open one from its loan account (Settings, Accounts, or the account's page) or from More, Loans.
+  Each loan shows what's owed, when it'll be paid off, interest paid and still to come, the rate history, and
+  what-ifs for paying extra each repayment or a lump sum, less any early repayment fee. Repayments can be weekly,
+  fortnightly or monthly. Your mortgage carries over as it was, and old Mortgage links still work.
+- **A car's resale value in net worth**: a car loan counts the car as something you own. Payday starts from what you
+  paid (the loan plus deposit) and takes 15% a year off, or whatever you set; add your own estimate any time. The loan
+  page shows what it's worth against what you owe, and when the car becomes worth more than the loan.
+- **Loan repayments set aside**: a repayment to a linked loan account counts as a transfer, so it wasn't held back
+  from your daily amount. The loan page now finds a bill you already have for it and links it, or adds one from the
+  last repayment in one click.
+
 ## 1.2.0
 
 - **What's new**: click the version number at the bottom of any page to see what changed in each version.
