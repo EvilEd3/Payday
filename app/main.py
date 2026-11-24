@@ -37,7 +37,8 @@ from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRat
                  PropertyValue, Rule, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
 from .insights import (Ctx, bars, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
-                       needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups)
+                       needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups,
+                       trends)
 from .forecast import account_balance, bank_balance, build_dashboard, counts_as_day_to_day
 from .periods import FREQUENCIES, get_cycle, period_of
 
@@ -1788,6 +1789,22 @@ def summary(request: Request, offset: int = 0, s: Session = Depends(session)):
                 "per_day": change(cur["per_day"], prev["per_day"]), "day_to_day": change(cur["day_to_day"], prev["day_to_day"])},
         "cat_change": cat_change, "limits": dash["limits"],
         "kept": kept, "in_progress": in_progress, "to_come": to_come})
+
+
+@app.get("/trends")
+def trends_page(request: Request, pays: int = 6, s: Session = Depends(session)):
+    """Several pay periods side by side: are we doing better than we were?"""
+    pays = 12 if pays >= 12 else 6
+    t = trends(Ctx(s, today()), pays)
+    ps = t["periods"]
+    labels = [p["start"].strftime("%-d %b") for p in ps]
+    chart = bars([p["day_to_day"] for p in ps], [f"{lbl}: ${p['spent']:,.0f} spent" for lbl, p in zip(labels, ps)],
+                 target=t["average"]["income"] or None, highlight=[not p["current"] for p in ps], axis=labels,
+                 show_values=not is_private(), stack=[p["bills"] for p in ps],
+                 hrefs=[f"/transactions?view=daytoday&offset={i - len(ps) + 1}" for i in range(len(ps))],
+                 stack_hrefs=[f"/transactions?view=bills&offset={i - len(ps) + 1}" for i in range(len(ps))], height=180)
+    return templates.TemplateResponse(request, "trends.html", {"t": t, "chart": chart, "pays": pays,
+                                                               "page": "summary"})
 
 
 def rate_warning(s: Session) -> float | None:

@@ -6,6 +6,10 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Trends**: your last 6 or 12 pays side by side (Summary, Trends over time). Spending each pay with bills and day to
+  day, what you kept and what share of income that was, averages over the finished pays, and your biggest
+  categories pay by pay with the unusually high ones in bold.
+
 ## 1.1.0
 
 **Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set
