@@ -908,6 +908,17 @@ input.tiny { width: 4.5rem; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
 
+/* ---- first-run steps in the pay card ---- */
+.paycard.setup h1 { margin: 0 0 .35rem; font-size: clamp(1.5rem, 4vw, 2rem); }
+.paycard.setup a { color: var(--on-hero); }
+.setup-steps { list-style: none; counter-reset: step; margin: 1.25rem 0; padding: 0; display: grid; gap: .6rem; }
+.setup-steps li { counter-increment: step; display: grid; grid-template-columns: 2rem 1fr; column-gap: .75rem; align-items: start; }
+.setup-steps li::before { content: counter(step); grid-row: span 2; width: 2rem; height: 2rem; border-radius: 50%; display: grid;
+  place-items: center; font-weight: 700; font-size: .875rem; background: color-mix(in srgb, var(--on-hero) 14%, transparent); }
+.setup-steps li.done::before { content: "✓"; background: var(--on-hero); color: var(--hero); }
+.setup-steps li.done strong { opacity: .7; text-decoration: line-through; }
+.setup-steps li > span { font-size: .875rem; opacity: .8; }
+
 /* ---- What's new (/updates) ---- */
 .release { border-top: 1px solid var(--line); margin-top: 1.5rem; }
 .release h2 { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
