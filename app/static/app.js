@@ -449,6 +449,18 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
+
+  /* ---- "What's new" beside the version number after an update, until you've opened the update log ---- */
+  function whatsNew() {
+    const link = document.querySelector(".sitefoot a.ver[data-version]");
+    if (!link) return;
+    const now = link.dataset.version, seen = keep.get("seen-version");
+    if (document.body.classList.contains("page-updates") || seen === null) keep.set("seen-version", now);
+    else if (seen !== now) link.classList.add("new");
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    whatsNew(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
     tidyAddress();
     restoreScroll();
   });

@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 
 from .db import Account, Category, Transaction
 from .periods import get_cycle, pay_period
+from .text import nice_case
 
 PALETTE = ["--c1", "--c2", "--c3", "--c4", "--c5", "--c6", "--c7", "--c8"]
 
@@ -19,7 +20,7 @@ def payee_key(t: Transaction) -> str:
     if t.merchant:
         return t.merchant.strip()
     words = [w for w in re.split(r"\s+", t.description) if w and not any(ch.isdigit() for ch in w)]
-    return (" ".join(words[:3]) or t.description).title()
+    return nice_case(" ".join(words[:3]) or t.description)
 
 
 class Ctx:
@@ -295,6 +296,38 @@ def bars(values: list[float], labels: list[str], target: float | None = None,
 
 
 
+
+
+# ---------- trends across pay periods ----------
+def trends(ctx: Ctx, count: int = 6, top_categories: int = 8) -> dict:
+    """The last `count` pay periods side by side, oldest first: income, bills, day to day and kept for each,
+    and spending in the biggest categories. The current period is included, marked as not finished."""
+    periods = []
+    for offset in range(-(count - 1), 1):
+        p = period_summary(ctx, offset)
+        p["current"] = offset == 0 and ctx.today < p["end"]
+        p["cats"] = {cid: v for _, v, cid in p["categories"]}
+        periods.append(p)
+    finished = [p for p in periods if not p["current"]] or periods
+    names: dict[int, str] = {}
+    totals: dict[int, float] = defaultdict(float)
+    for p in periods:
+        for name, v, cid in p["categories"]:
+            names[cid] = name
+            totals[cid] += v
+    top = sorted(totals, key=lambda cid: -totals[cid])[:top_categories]
+    n = len(finished)
+    avg = lambda key: sum(p[key] for p in finished) / n  # noqa: E731
+    income = avg("income")
+    return {
+        "periods": periods,
+        "categories": [{"id": cid, "name": names[cid], "amounts": [p["cats"].get(cid, 0.0) for p in periods],
+                        "average": sum(p["cats"].get(cid, 0.0) for p in finished) / n} for cid in top],
+        "average": {"income": income, "spent": avg("spent"), "bills": avg("bills"), "day_to_day": avg("day_to_day"),
+                    "saved": avg("saved"), "per_day": avg("per_day"),
+                    "rate": (income - avg("spent")) / income if income else None},
+        "finished": n,
+    }
 
 
 # ---------- subscriptions ----------

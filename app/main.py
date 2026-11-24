@@ -35,9 +35,12 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
                    user_from_pre_cookie, verify_password)
 from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
                  PropertyValue, Rule, Split, Transaction, User, current_engine, current_profile_id, get_setting,
+
+                 PropertyValue, Rule, Setting, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
 from .insights import (Ctx, bars, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
-                       needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups)
+                       needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups,
+                       trends)
 from .forecast import account_balance, bank_balance, build_dashboard, counts_as_day_to_day
 from .periods import FREQUENCIES, get_cycle, period_of
 
@@ -271,7 +274,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 # Reachable without signing in. Each of these checks its own proof (password, a 2FA step cookie or a one-time link).
 PUBLIC_PATHS = ("/login", "/setup", "/invite/", "/reset/", "/2fa/", "/manifest.webmanifest", "/sw.js", "/static/",
                 "/theme.css", "/favicon.ico", "/welcome", "/signup", "/verify/", "/forgot", "/legal/", "/help",
-                "/contact")
+                "/contact", "/updates")
 # Paths that work without a profile chosen.
 NO_PROFILE_PATHS = ("/site", "/me", "/logout", "/profiles/", "/no-profile")
 # Changes a read-only member may still make (their own preferences, sign-in and which profile they're viewing).
@@ -1313,8 +1316,27 @@ def service_worker():
 # ---------- Dashboard ----------
 @app.get("/")
 def dashboard(request: Request, offset: int = 0, s: Session = Depends(session)):
+    d = build_dashboard(s, today(), offset)
     return templates.TemplateResponse(request, "dashboard.html",
-                                      {"d": build_dashboard(s, today(), offset), "page": "home", "warn": rate_warning(s)})
+                                      {"d": d, "page": "home", "warn": rate_warning(s),
+                                       "setup": None if d["all_accounts"] else setup_steps(s)})
+
+
+def setup_steps(s: Session) -> list[dict]:
+    """A new household's first steps, shown on the Overview until the first accounts arrive."""
+    return [
+        {"label": "Set your payday", "href": "/settings?tab=pay",
+         "done": bool(s.get(Setting, "pay_frequency") or s.get(Setting, "payday_day")),
+         "why": "Payday budgets from one pay to the next."},
+        {"label": "Connect your bank", "href": "/settings?tab=bank", "done": bool(vault.tokens(s).get("user")),
+         "why": "Through Akahu, read only. See Help for the steps."},
+        {"label": "Sync and choose the accounts that count", "href": "/settings?tab=accounts", "done": False,
+         "why": "Press Sync now below, then tick the accounts your day-to-day money is in."},
+        {"label": "Add your bills", "href": "/bills", "done": bool(s.exec(select(Bill)).first()),
+         "why": "Payday sets their money aside and ticks them off when they're paid."},
+        {"label": "Set a goal", "href": "/goals", "done": bool(s.exec(select(Goal)).first()),
+         "why": "Optional: save towards something by a date."},
+    ]
 
 
 @app.post("/privacy")
@@ -1671,7 +1693,7 @@ def bills_page(request: Request, from_txn: str | None = None, s: Session = Depen
         "bills": bills, "status": status, "start": start, "end": end, "suggestions": suggestions,
         "cats": s.exec(select(Category).order_by(Category.name)).all(),
         "today": today(), "prefill": prefill, "bill_msg": request.query_params.get("bill", ""),
-        "page": "bills"})
+        "pay_accounts": _pay_accounts(s), "page": "bills"})
 
 
 @app.post("/bills/suggestions/dismiss")
@@ -1689,22 +1711,28 @@ def reset_suggestions(s: Session = Depends(session)):
 
 
 def _bill_values(name: str, amount: float, frequency: str, match_pattern: str, tolerance_pct: float,
-                 window_days: int, category_id: str, s: Session) -> dict | None:
+                 window_days: int, category_id: str, s: Session, account_id: str = "") -> dict | None:
     """Checked form values for a bill, or None if they can't make a working bill."""
     if not name.strip() or abs(amount) < 0.005 or frequency not in APPROX_DAYS or not valid_pattern(match_pattern):
         return None
     cid = int(category_id) if category_id.isdigit() and s.get(Category, int(category_id)) else None
     return dict(name=name.strip()[:80], amount=round(abs(amount), 2), frequency=frequency,
                 match_pattern=match_pattern.strip(), tolerance_pct=min(max(tolerance_pct, 0), 100),
-                window_days=min(max(window_days, 0), 31), category_id=cid)
+                window_days=min(max(window_days, 0), 31), category_id=cid,
+                account_id=account_id if account_id and s.get(Account, account_id) else None)
+
+
+def _pay_accounts(s: Session) -> list[Account]:
+    """Accounts a bill can come out of: everything but loans."""
+    return [a for a in s.exec(select(Account).order_by(Account.name)) if a.type != "LOAN"]
 
 
 @app.post("/bills")
 def add_bill(name: str = Form(...), amount: float = Form(...), frequency: str = Form(...),
              anchor_date: date = Form(...), match_pattern: str = Form(...),
              tolerance_pct: float = Form(10), window_days: int = Form(4),
-             category_id: str = Form(""), s: Session = Depends(session)):
-    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s)
+             category_id: str = Form(""), account_id: str = Form(""), s: Session = Depends(session)):
+    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s, account_id)
     if not values:
         return back("/bills?bill=bad#add")
     s.add(Bill(anchor_date=anchor_date, **values))
@@ -1732,7 +1760,7 @@ def bill_detail(request: Request, bill_id: int, s: Session = Depends(session)):
     return templates.TemplateResponse(request, "bill_detail.html", {
         "bill": bill, "linked": linked, "missed": missed[-6:], "upcoming": upcoming, "pending": pending,
         "avg": sum(amounts) / len(amounts) if amounts else 0,
-        "accounts": {a.id: a for a in s.exec(select(Account))},
+        "accounts": {a.id: a for a in s.exec(select(Account))}, "pay_accounts": _pay_accounts(s),
         "cats": s.exec(select(Category).order_by(Category.name)).all(),
         "today": t0, "bill_msg": request.query_params.get("bill", ""), "page": "bills"})
 
@@ -1742,9 +1770,9 @@ def edit_bill(bill_id: int, name: str = Form(...), amount: float = Form(...),
               frequency: str = Form(...), anchor_date: date = Form(...),
               match_pattern: str = Form(...), tolerance_pct: float = Form(10),
               window_days: int = Form(4), category_id: str = Form(""), active: bool = Form(False),
-              s: Session = Depends(session)):
+              account_id: str = Form(""), s: Session = Depends(session)):
     bill = s.get(Bill, bill_id)
-    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s)
+    values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s, account_id)
     if not bill:
         return back("/bills")
     if not values:
@@ -1865,6 +1893,22 @@ def summary(request: Request, offset: int = 0, s: Session = Depends(session)):
                 "per_day": change(cur["per_day"], prev["per_day"]), "day_to_day": change(cur["day_to_day"], prev["day_to_day"])},
         "cat_change": cat_change, "limits": dash["limits"],
         "kept": kept, "in_progress": in_progress, "to_come": to_come})
+
+
+@app.get("/trends")
+def trends_page(request: Request, pays: int = 6, s: Session = Depends(session)):
+    """Several pay periods side by side: are we doing better than we were?"""
+    pays = 12 if pays >= 12 else 6
+    t = trends(Ctx(s, today()), pays)
+    ps = t["periods"]
+    labels = [p["start"].strftime("%-d %b") for p in ps]
+    chart = bars([p["day_to_day"] for p in ps], [f"{lbl}: ${p['spent']:,.0f} spent" for lbl, p in zip(labels, ps)],
+                 target=t["average"]["income"] or None, highlight=[not p["current"] for p in ps], axis=labels,
+                 show_values=not is_private(), stack=[p["bills"] for p in ps],
+                 hrefs=[f"/transactions?view=daytoday&offset={i - len(ps) + 1}" for i in range(len(ps))],
+                 stack_hrefs=[f"/transactions?view=bills&offset={i - len(ps) + 1}" for i in range(len(ps))], height=180)
+    return templates.TemplateResponse(request, "trends.html", {"t": t, "chart": chart, "pays": pays,
+                                                               "page": "summary"})
 
 
 def rate_warning(s: Session) -> float | None:
@@ -2870,6 +2914,14 @@ def legal(request: Request, page: str):
 @app.get("/contact")
 def contact(request: Request):
     return templates.TemplateResponse(request, "contact.html", {"page": "legal", "info": site_info()})
+
+
+@app.get("/updates")
+def updates_page(request: Request):
+    """What's changed in each version, from CHANGELOG.md. Opened from the version number in the footer."""
+    from .changelog import releases
+    return templates.TemplateResponse(request, "updates.html", {"page": "updates", "info": site_info(),
+                                                                "releases": releases()})
 
 
 @app.get("/help")

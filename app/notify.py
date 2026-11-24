@@ -25,7 +25,7 @@ MAX_PER_RUN = 5  # more than this in one go are rolled into a single "and N more
 DEFAULTS = {
     "bill_due": True, "due_days": 2, "bill_missed": True, "payday": True,
     "day_rate": True, "limit_over": True, "limit_near": False, "big": False, "big_amount": 200,
-    "sync_failed": True, "stale": True,
+    "sync_failed": True, "stale": True, "short": True,
     "weekly": False, "period_end": True, "goal": True, "review": False,
     "quiet_start": 21, "quiet_end": 7,
 }
@@ -100,6 +100,17 @@ def find(s: Session, today: date, now: datetime) -> list[dict]:
                         title="Your pay has landed",
                         body=f"{_money(d['income'])} in. That’s {_money(max(d['budget_per_day'], 0))} a day until "
                              f"{'the 1st' if cal else _day(d['payday'])}, after bills."))
+
+    # an account that won't cover the bills coming out of it before payday
+    names = {a.id: a.name for a in d["all_accounts"]}
+    for acc_id, f in d.get("forecast", {}).items():
+        if f["short"]:
+            due = [b.name for when, b in f["bills"] if when <= f["low_date"]]
+            out.append(dict(kind="short", key=f"short:{acc_id}:{f['low_date']}", url=f"/accounts/{acc_id}",
+                            title=f"Your {names.get(acc_id, '')} account will be {_money(-f['low'])} short".replace("  ", " "),
+                            body=f"{' and '.join(filter(None, [', '.join(due[:-1]), due[-1]]))} come{'s' if len(due) == 1 else ''} "
+                                 f"out of it by {_day(f['low_date'])}. "
+                                 "Move money in before then."))
 
     # spending
     try:

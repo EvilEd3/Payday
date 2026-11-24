@@ -67,6 +67,42 @@ def pending_spending(session: Session, acc_map: dict, start: date, end: date) ->
     return out
 
 
+def bill_accounts(session: Session, bills) -> dict[int, str]:
+    """{bill id: the account it comes out of}: the one you chose, else the account its latest payment came from."""
+    chosen = {b.id: b.account_id for b in bills if b.account_id}
+    latest: dict[int, str] = {}
+    for t in session.exec(select(Transaction).where(Transaction.bill_id != None)  # noqa: E711
+                          .order_by(Transaction.date)):
+        latest[t.bill_id] = t.account_id
+    return {**latest, **chosen}
+
+
+def account_forecast(session: Session, upcoming: list[dict], accounts: list[Account], balances: dict,
+                     today: date) -> dict[str, dict]:
+    """Each account's balance as the bills still to come before payday come out of it, before any day-to-day
+    spending. {account id: {"low", "low_date", "end", "bills": [(due, bill)], "short": bool}}, only for
+    accounts with a bill to come. Credit cards and loans are left out: a bill there adds to what's owed."""
+    owners = bill_accounts(session, [u["bill"] for u in upcoming])
+    by_acc: dict[str, list] = defaultdict(list)
+    for u in upcoming:
+        acc = owners.get(u["bill"].id)
+        if acc:
+            by_acc[acc].append((max(u["due"], today), u["bill"]))
+    out = {}
+    for a in accounts:
+        if a.type in OWED_TYPES or a.id not in by_acc:
+            continue
+        bal = balances.get(a.id, 0.0)
+        low, low_date = bal, today
+        for due, bill in sorted(by_acc[a.id], key=lambda x: (x[0], x[1].id)):
+            bal -= bill.amount
+            if bal < low - 0.005:
+                low, low_date = bal, due
+        out[a.id] = {"low": low, "low_date": low_date, "end": bal, "short": low < -0.005,
+                     "bills": sorted(by_acc[a.id], key=lambda x: (x[0], x[1].id))}
+    return out
+
+
 def counts_as_day_to_day(t: Transaction, kind: str, accounts: dict) -> bool:
     return kind == "expense" and t.bill_id is None and counts(t, accounts)
 
@@ -165,6 +201,7 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
         pace=planned_per_day * days_gone - day_to_day,
         categories=top, cat_max=top[0][2] if top else 1, cat_total=sum(x[2] for x in top) or 1,
         limits=category_limits(Ctx(session, today), offset), pending_total=pending_total,
+        forecast={} if is_past else account_forecast(session, upcoming, all_accounts, balances, today),
         pending_count=len(pending),
         last_sync=get_setting(session, "last_sync"),
         last_sync_status=get_setting(session, "last_sync_status"),

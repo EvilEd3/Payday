@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 from sqlmodel import Session, select
 
 from .db import Bill, Transaction
+from .text import nice_case
 
 APPROX_DAYS = {"weekly": 7, "fortnightly": 14, "monthly": 30, "quarterly": 91, "yearly": 365}
 MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
@@ -153,7 +154,7 @@ def suggest_bill(session: Session, txn: Transaction) -> dict:
         gap = gaps[len(gaps) // 2]
         frequency = ("weekly" if gap <= 9 else "fortnightly" if gap <= 18 else "monthly" if gap <= 45
                      else "quarterly" if gap <= 120 else "yearly")
-    return {"name": pattern.title(), "amount": f"{-txn.amount:.2f}", "frequency": frequency,
+    return {"name": nice_case(pattern), "amount": f"{-txn.amount:.2f}", "frequency": frequency,
             "anchor_date": txn.date.isoformat(), "match_pattern": pattern,
             "category_id": txn.category_id, "seen": len(history)}
 

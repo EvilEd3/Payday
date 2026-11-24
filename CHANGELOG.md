@@ -10,6 +10,24 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
   and notes, such as groceries and cleaning in one supermarket shop. The Overview, Summary, Trends and limits count each
   part in its own category, and a category's transaction list shows its part. Bills and transfers aren't split.
 
+- **Trends**: your last 6 or 12 pays side by side (Summary, Trends over time). Spending each pay with bills and day to
+  day, what you kept and what share of income that was, averages over the finished pays, and your biggest
+  categories pay by pay with the unusually high ones in bold.
+
+- **Know before an account runs short**: the Overview follows each account through the bills still due before payday
+  and warns when one won't cover them, naming the bills and the day. Each account shows where it'll be after its
+  bills. A bill comes out of the account its last payment did, or one you pick (Bills, edit a bill, Comes out of).
+  There's a matching notification, on by default (Settings, Notifications).
+
+- **A heads-up when your bank can't cover the daily amount**: if the accounts you count hold noticeably less than
+  this pay's budget expects (often money moved to savings), the Overview says so and links to the bank check.
+- **Payee names keep their initials**: "ANZ Home Loan" and "AA Insurance" instead of "Anz" and "Aa".
+- **First steps on a new household**: until your bank's accounts arrive, the Overview shows a short setup list
+  instead of "$0.00 a day".
+
+- **What's new**: click the version number at the bottom of any page to see what changed in each version.
+  After an update, a "What's new" tag sits beside it until you've had a look.
+
 ## 1.1.0
 
 **Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set

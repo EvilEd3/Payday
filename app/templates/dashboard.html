@@ -18,6 +18,25 @@
 </a>
 {% endif %}
 
+{% for a in d.all_accounts if d.forecast.get(a.id) and d.forecast[a.id].short %}{% set f = d.forecast[a.id] %}
+<a class="notice warnnote" href="/accounts/{{ a.id }}">
+  {% set due = f.bills|selectattr(0, 'le', f.low_date)|map(attribute=1)|list %}
+  <span><strong>Your {{ a.name }} account will be {{ (-f.low)|money }} short on {{ f.low_date|nice }}.</strong>
+    {% for b in due %}{{ b.name }} ({{ b.amount|money }}){{ ' and ' if loop.revindex == 2 else (', ' if not loop.last) }}{% endfor %} come{{ 's' if due|length == 1 }} out of it by then, and it holds {{ d.balances[a.id]|money }}. Move money in to cover {{ 'it' if due|length == 1 else 'them' }}.</span>
+  <span class="btn quiet small">Details</span>
+</a>
+{% endfor %}
+
+{% if not d.is_past and d.income > 0 and d.budget_per_day > 0 and d.per_day < d.budget_per_day * 0.85 and d.budget_per_day - d.per_day >= 2 %}
+<a class="notice warnnote" href="/summary#bank-check">
+  {% if d.free < 0 %}<span><strong>Your bank balances don’t cover the bills to come.</strong>
+    The accounts you count hold {{ (-d.free)|money }} less than the {{ d.to_come|money }} of bills still due before payday.</span>
+  {% else %}<span><strong>Your bank balances only cover {{ d.per_day|money }} a day.</strong>
+    That’s less than the {{ d.budget_per_day|money }} below: {{ (d.budget_left - d.free)|money }} of this pay isn’t in the accounts you count, often money moved to savings or a bill paid from another account.</span>{% endif %}
+  <span class="btn quiet small">Bank check</span>
+</a>
+{% endif %}
+
 {% set stale = d.all_accounts|select('stale')|list %}
 {% if stale and not d.is_past %}
 <a class="notice warnnote" href="/settings?tab=accounts">
@@ -27,6 +46,20 @@
 </a>
 {% endif %}
 
+{% if setup and not d.is_past %}
+{# ---------- a new household: what to do first, until the first accounts arrive ---------- #}
+<section class="paycard setup" aria-labelledby="headline">
+  <h1 id="headline" class="pc-say">Let’s set Payday up</h1>
+  <p class="pc-note">A few steps and this card shows what you can spend each day until payday.</p>
+  <ol class="setup-steps">
+    {% for st in setup %}
+    <li class="{{ 'done' if st.done }}"><a href="{{ st.href }}"><strong>{{ st.label }}</strong>{% if st.done %}<span class="sr-only"> (done)</span>{% endif %}</a>
+      <span>{{ st.why }}</span></li>
+    {% endfor %}
+  </ol>
+  <p class="pc-note"><a href="/help">Getting started</a> has more on each step.</p>
+</section>
+{% else %}
 {# ---------- the pay card: what's left of this pay, per day ---------- #}
 {% set base = [d.income, d.bills_total + d.day_to_day]|max %}
 <section class="paycard" aria-labelledby="headline">
@@ -83,8 +116,9 @@
   </dl>
   {% endif %}
 </section>
+{% endif %}
 
-{% if not d.is_past %}
+{% if not d.is_past and not setup %}
 <div class="runway" role="list" aria-label="Days {{ until }}">
   {% for day in d.runway %}
   <div role="listitem" class="day {% if loop.first %}today{% endif %} {% if day.date.weekday() >= 5 %}weekend{% endif %} {% if day.bills %}has-bill{% endif %}">
@@ -185,7 +219,8 @@
       {% for a in d.all_accounts %}
       {% set bal = d.balances[a.id] %}
       <li class="{{ '' if a.in_budget else 'off' }}">
-        <a href="/accounts/{{ a.id }}">{{ a.name }}<small>{{ a.institution }}{% if not a.in_budget %}{{ ', ' if a.institution }}not counted{% endif %}{% if a is stale %}<span class="neg">{{ ', ' if a.institution or not a.in_budget }}bank data from {{ a.refreshed_txns|freshness }}</span>{% endif %}</small></a>
+        <a href="/accounts/{{ a.id }}">{{ a.name }}<small>{{ a.institution }}{% if not a.in_budget %}{{ ', ' if a.institution }}not counted{% endif %}{% if a is stale %}<span class="neg">{{ ', ' if a.institution or not a.in_budget }}bank data from {{ a.refreshed_txns|freshness }}</span>{% endif %}</small>
+          {% set f = d.forecast.get(a.id) %}{% if f %}<small class="{{ 'neg' if f.short }}">{{ f.end|money }} after {{ f.bills|length }} bill{{ 's' if f.bills|length != 1 }} to come{% if f.short %}, short on {{ f.low_date|nice }}{% endif %}</small>{% endif %}</a>
         <span class="amt {{ 'neg' if bal < 0 }}">{{ bal|money }}</span>
       </li>
       {% else %}
