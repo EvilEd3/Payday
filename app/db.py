@@ -233,6 +233,15 @@ class Transaction(SQLModel, table=True):
     reviewed: bool = False  # you've checked a guessed category (Akahu's, or the fallback) and it's right
 
 
+class Split(SQLModel, table=True):
+    """One part of a transaction you've split across categories. The parts add up to the transaction."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    txn_id: str = Field(index=True)
+    amount: float  # same sign as the transaction
+    category_id: int = Field(foreign_key="category.id")
+    note: str = ""
+
+
 class User(SQLModel, table=True):
     """A person who can sign in (site database). What they can do depends on the profile: see Membership."""
     id: Optional[int] = Field(default=None, primary_key=True)

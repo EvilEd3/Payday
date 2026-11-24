@@ -907,3 +907,8 @@ input.tiny { width: 4.5rem; }
 .devices li > span { display: grid; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
+
+/* ---- split transactions ---- */
+.splitparts { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; font-size: .875rem; }
+.splitparts li { display: flex; justify-content: space-between; gap: .75rem; }
+.splitform table select, .splitform table input { width: 100%; }

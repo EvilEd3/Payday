@@ -432,8 +432,23 @@
     show();
   }
 
+  /* ---- split a transaction: show what's left to give a category ---- */
+  function splitForm() {
+    const form = document.querySelector("form[data-split-total]");
+    if (!form) return;
+    const total = parseFloat(form.dataset.splitTotal), out = form.querySelector("[data-split-left]");
+    const show = () => {
+      const used = [...form.querySelectorAll("[data-split-amount]")].reduce((sum, i) => sum + (parseFloat(i.value.replace(/[$,]/g, "")) || 0), 0);
+      const left = Math.round((total - used) * 100) / 100;
+      out.textContent = left === 0 ? "All of it has a category." : (left > 0 ? "$" + left.toFixed(2) + " still to give a category." : "$" + (-left).toFixed(2) + " more than the transaction.");
+      out.className = "small " + (left === 0 ? "pos" : "neg");
+    };
+    form.addEventListener("input", show);
+    show();
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
-    sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
+    splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
     tidyAddress();
     restoreScroll();
   });

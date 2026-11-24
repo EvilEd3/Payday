@@ -6,6 +6,10 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Split a transaction across categories**: from a transaction's ··· menu, give parts of it their own categories
+  and notes, such as groceries and cleaning in one supermarket shop. The Overview, Summary, Trends and limits count each
+  part in its own category, and a category's transaction list shows its part. Bills and transfers aren't split.
+
 ## 1.1.0
 
 **Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set
