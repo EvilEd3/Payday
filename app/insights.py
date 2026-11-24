@@ -289,6 +289,38 @@ def bars(values: list[float], labels: list[str], target: float | None = None,
 
 
 
+# ---------- trends across pay periods ----------
+def trends(ctx: Ctx, count: int = 6, top_categories: int = 8) -> dict:
+    """The last `count` pay periods side by side, oldest first: income, bills, day to day and kept for each,
+    and spending in the biggest categories. The current period is included, marked as not finished."""
+    periods = []
+    for offset in range(-(count - 1), 1):
+        p = period_summary(ctx, offset)
+        p["current"] = offset == 0 and ctx.today < p["end"]
+        p["cats"] = {cid: v for _, v, cid in p["categories"]}
+        periods.append(p)
+    finished = [p for p in periods if not p["current"]] or periods
+    names: dict[int, str] = {}
+    totals: dict[int, float] = defaultdict(float)
+    for p in periods:
+        for name, v, cid in p["categories"]:
+            names[cid] = name
+            totals[cid] += v
+    top = sorted(totals, key=lambda cid: -totals[cid])[:top_categories]
+    n = len(finished)
+    avg = lambda key: sum(p[key] for p in finished) / n  # noqa: E731
+    income = avg("income")
+    return {
+        "periods": periods,
+        "categories": [{"id": cid, "name": names[cid], "amounts": [p["cats"].get(cid, 0.0) for p in periods],
+                        "average": sum(p["cats"].get(cid, 0.0) for p in finished) / n} for cid in top],
+        "average": {"income": income, "spent": avg("spent"), "bills": avg("bills"), "day_to_day": avg("day_to_day"),
+                    "saved": avg("saved"), "per_day": avg("per_day"),
+                    "rate": (income - avg("spent")) / income if income else None},
+        "finished": n,
+    }
+
+
 # ---------- subscriptions ----------
 FREQUENCIES = [("weekly", 5, 9), ("fortnightly", 12, 17), ("monthly", 26, 35), ("quarterly", 80, 100),
                ("yearly", 345, 385)]

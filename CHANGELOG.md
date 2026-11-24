@@ -6,6 +6,10 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Trends**: your last 6 or 12 pays side by side (Summary, Trends over time). Spending each pay with bills and day to
+  day, what you kept and what share of income that was, averages over the finished pays, and your biggest
+  categories pay by pay with the unusually high ones in bold.
+
 - **Know before an account runs short**: the Overview follows each account through the bills still due before payday
   and warns when one won't cover them, naming the bills and the day. Each account shows where it'll be after its
   bills. A bill comes out of the account its last payment did, or one you pick (Bills, edit a bill, Comes out of).

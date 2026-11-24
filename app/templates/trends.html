@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Trends · Payday{% endblock %}
+{% block content %}
+{% set a = t.average %}
+<div class="pagehead">
+  <div>
+    <h1>Trends</h1>
+    <p class="sub">Your last {{ t.periods|length }} pay periods side by side. Averages are over the {{ t.finished }} finished ones.</p>
+  </div>
+  <div class="headtools">
+    <nav class="pills" aria-label="How many pays">
+      {% for n in [6, 12] %}<a href="/trends?pays={{ n }}" {% if pays == n %}aria-current="page"{% endif %}>{{ n }} pays</a>{% endfor %}
+    </nav>
+    <a class="btn quiet small" href="/summary">This pay’s summary</a>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><b class="pos">{{ a.income|money }}</b><span>Average income a pay</span></div>
+  <div class="kpi"><b>{{ a.spent|money }}</b><span>Average spent a pay</span></div>
+  <div class="kpi"><b class="{{ 'pos' if a.saved >= 0 else 'neg' }}">{{ a.saved|abs|money }}</b><span>{{ 'Kept' if a.saved >= 0 else 'Overspent' }} a pay on average{% if a.rate is not none %}, {{ (a.rate|abs * 100)|round|int }}% of income{% endif %}</span></div>
+  <div class="kpi"><b>{{ a.per_day|money }}</b><span>Day-to-day spend a day, on average</span></div>
+</div>
+
+<section class="section">
+  <h2>Spending each pay</h2>
+  <ul class="chartkey small muted">
+    <li><i class="key-d2d"></i>Day to day</li><li><i class="key-bills"></i>Bills</li>
+    {% if a.income %}<li><span class="key-target" aria-hidden="true"></span>Average income: {{ a.income|money }}</li>{% endif %}
+    {% if t.periods[-1].current %}<li>The last column is this pay so far.</li>{% endif %}
+  </ul>
+  <div class="panel">{{ chart }}</div>
+</section>
+
+<section class="section">
+  <h2>Pay by pay</h2>
+  <div class="panel flush scrollx"><table class="nosearch">
+    <thead><tr><th>Pay period</th><th class="num">Income</th><th class="num">Bills</th><th class="num">Day to day</th><th class="num">Kept</th><th class="num">Of income</th></tr></thead>
+    <tbody>
+    {% for p in t.periods|reverse %}{% set o = p.offset %}
+    <tr>
+      <td><a href="/summary{{ '?offset=' ~ o if o else '' }}">{{ p.start|short }} – {{ p.last|short }}</a>{% if p.current %} <span class="chip">so far</span>{% endif %}</td>
+      <td class="num">{{ p.income|money }}</td>
+      <td class="num">{{ p.bills|money }}</td>
+      <td class="num">{{ p.day_to_day|money }}</td>
+      <td class="num {{ 'pos' if p.saved >= 0 else 'neg' }}">{{ p.saved|money }}</td>
+      <td class="num">{% if p.rate is not none %}{{ (p.rate * 100)|round|int }}%{% else %}–{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+{% if t.categories %}
+<section class="section">
+  <h2>Biggest categories</h2>
+  <p class="muted small">Spending in each category per pay, bills included. Bold is more than a quarter above that category’s average.</p>
+  <div class="panel flush scrollx"><table class="nosearch trendcats">
+    <thead><tr><th>Category</th>{% for p in t.periods %}<th class="num">{{ p.start|short }}{% if p.current %}*{% endif %}</th>{% endfor %}<th class="num">Average</th></tr></thead>
+    <tbody>
+    {% for c in t.categories %}
+    <tr>
+      <td><a href="/transactions?category={{ c.id }}">{{ c.name }}</a></td>
+      {% for v in c.amounts %}<td class="num {{ 'muted' if v < 0.005 }}">{% if c.average and v > c.average * 1.25 and not t.periods[loop.index0].current %}<strong>{{ v|dollars }}</strong>{% else %}{{ v|dollars }}{% endif %}</td>{% endfor %}
+      <td class="num">{{ c.average|dollars }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if t.periods[-1].current %}<p class="muted small">* This pay so far.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

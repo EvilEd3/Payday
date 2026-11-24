@@ -16,7 +16,7 @@
     <h1>Summary</h1>
     <p class="sub">{% if c.offset == 0 %}Day {{ c.elapsed }} of {{ c.days }} in this pay period.{% else %}A pay period of {{ c.days }} days.{% endif %}</p>
   </div>
-  {{ period_nav('/summary', c.offset, c.start, c.end) }}
+  <div class="headtools">{{ period_nav('/summary', c.offset, c.start, c.end) }}<a class="btn quiet small" href="/trends">Trends over time</a></div>
 </div>
 
 <div class="kpis">

@@ -908,6 +908,14 @@ input.tiny { width: 4.5rem; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
 
+/* ---- Trends ---- */
+.headtools { display: flex; align-items: center; gap: .5rem .75rem; flex-wrap: wrap; }
+.pills { display: inline-flex; gap: 2px; padding: 3px; border-radius: 99px; background: var(--sunk); }
+.pills a { padding: .3rem .8rem; border-radius: 99px; font-size: .8125rem; text-decoration: none; color: var(--muted); }
+.pills a[aria-current] { background: var(--surface); color: var(--ink); font-weight: 600; }
+.panel.scrollx, .scrollx { overflow-x: auto; }
+.trendcats td, .trendcats th { white-space: nowrap; }
+
 .accrows small.neg { color: var(--rata); }
 
 /* ---- first-run steps in the pay card ---- */
