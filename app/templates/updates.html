@@ -1,0 +1,17 @@
+{% extends "public.html" %}
+{% block title %}What’s new · {{ info.business_name }}{% endblock %}
+{% block content %}
+<h1>What’s new</h1>
+<p class="lede">You’re running Payday {{ version }}. Every version’s changes are below, newest first.</p>
+{% for r in releases %}
+<section class="release{{ ' current' if r.version == version }}" id="v{{ r.version|replace('.', '-')|lower }}">
+  <h2>{% if r.unreleased %}Coming in the next version{% else %}{{ r.version }}{% endif %}
+    {% if r.version == version %}<span class="chip">Your version</span>{% endif %}</h2>
+  {{ r.html }}
+</section>
+{% else %}
+<p class="muted">The list of changes isn’t included in this copy of Payday. See the
+  <a href="https://github.com/EvilEd3/Payday/releases" rel="noopener" target="_blank">releases on GitHub</a>.</p>
+{% endfor %}
+<p class="small muted">Also on <a href="https://github.com/EvilEd3/Payday/releases" rel="noopener" target="_blank">GitHub</a>.</p>
+{% endblock %}

@@ -907,3 +907,11 @@ input.tiny { width: 4.5rem; }
 .devices li > span { display: grid; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
+
+/* ---- What's new (/updates) ---- */
+.release { border-top: 1px solid var(--line); margin-top: 1.5rem; }
+.release h2 { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.release.current .chip { background: var(--bush-soft); color: var(--bush); }
+.release ul ul { margin: .3rem 0 .4rem; }
+.sitefoot a.ver.new::after { content: "What’s new"; margin-left: .5rem; font-size: .75rem; padding: .05rem .5rem;
+  border-radius: 99px; background: var(--bush-soft); color: var(--bush); }
