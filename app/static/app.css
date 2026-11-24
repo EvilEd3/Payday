@@ -907,3 +907,5 @@ input.tiny { width: 4.5rem; }
 .devices li > span { display: grid; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
+
+.accrows small.neg { color: var(--rata); }
