@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_macros.html" import chev %}
+{% block title %}Calendar · Payday{% endblock %}
+{% block content %}
+{% set month = c.view == 'month' %}
+{% set unit = 'month' if month else 'pay period' %}
+{% set t = c.totals %}
+{% macro link(view, offset) %}/calendar?view={{ view }}{% if offset %}&offset={{ offset }}{% endif %}{% endmacro %}
+
+<div class="pagehead">
+  <div>
+    <h1>Calendar</h1>
+    <p class="sub">{% if month %}{{ c.start.strftime('%B %Y') }}{% else %}Pay period {{ c.start|short }} to {{ c.end|daybefore|short }}{% endif %}:
+      {% if c.entries %}{{ c.entries|length }} bill{{ 's' if c.entries|length != 1 }} due, {{ t.all|money }} in all.{% else %}no bills due.{% endif %}</p>
+  </div>
+  <div class="headtools">
+    {% if not c.calendar %}
+    <nav class="tabs seg" aria-label="Show by">
+      <a href="{{ link('pay', c.switch.pay if month else c.offset) }}" {% if not month %}aria-current="page"{% endif %}>Pay period</a>
+      <a href="{{ link('month', c.offset if month else c.switch.month) }}" {% if month %}aria-current="page"{% endif %}>Month</a>
+    </nav>
+    {% endif %}
+    <nav class="period" aria-label="{{ unit|capitalize }}">
+      <a href="{{ link(c.view, c.offset - 1) }}" aria-label="Previous {{ unit }}" title="Previous {{ unit }}"
+         {% if c.offset <= c.min_offset %}aria-disabled="true" tabindex="-1"{% endif %}>{{ chev('left') }}</a>
+      <span class="label">{% if month %}{{ c.start.strftime('%B %Y') }}{% else %}{{ c.start|short }} – {{ c.end|daybefore|short }}{% endif %}</span>
+      <a href="{{ link(c.view, c.offset + 1) }}" aria-label="Next {{ unit }}" title="Next {{ unit }}"
+         {% if c.offset >= c.max_offset %}aria-disabled="true" tabindex="-1"{% endif %}>{{ chev('right') }}</a>
+      {% if c.offset %}<a class="now" href="{{ link(c.view, 0) }}">Now</a>{% endif %}
+    </nav>
+  </div>
+</div>
+
+<dl class="billsums calsums">
+  <div class="paid"><dt>Paid</dt><dd>{{ (t.paid + t.pending)|money }}</dd><small class="muted">{{ c.counts.paid + c.counts.pending }} bill{{ 's' if c.counts.paid + c.counts.pending != 1 }}{% if t.pending %}, {{ t.pending|money }} pending{% endif %}</small></div>
+  <div class="due"><dt>To come</dt><dd>{{ t.due|money }}</dd><small class="muted">{{ c.counts.due }} bill{{ 's' if c.counts.due != 1 }}</small></div>
+  <div class="late"><dt>Missed</dt><dd>{{ t.missed|money }}</dd><small class="{{ 'neg' if c.counts.missed else 'muted' }}">{{ c.counts.missed }} with no payment seen</small></div>
+  <div class="all"><dt>All bills</dt><dd>{{ t.all|money }}</dd><small class="muted">this {{ unit }}</small></div>
+</dl>
+
+<section class="block calblock" aria-label="Bills by day">
+  <div class="calhead" aria-hidden="true">{% for wd in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}<span>{{ wd }}</span>{% endfor %}<span class="wk">Week</span></div>
+  <ol class="cal">
+    {% for w in c.weeks %}
+    {% for day in w.days %}
+    {% set dd = day.date %}
+    <li class="cd{{ ' out' if not day.inside }}{{ ' has' if day.bills }}{{ ' today' if day.today }}{{ ' payday' if day.payday }}{{ ' wkend' if dd.weekday() >= 5 }}{{ ' past' if dd < c.today }}"
+        {% if not day.inside and not day.payday %}aria-hidden="true"{% endif %}>
+      <div class="cdtop">
+        <span class="wd">{{ dd.strftime('%a') }}</span>
+        <span class="dn">{{ dd.day }}{% if dd.day == 1 or dd == c.start %} <small>{{ dd.strftime('%b') }}</small>{% endif %}</span>
+        {% if day.today %}<span class="tag">Today</span>{% elif day.payday %}<span class="tag">Payday</span>{% endif %}
+      </div>
+      {% if day.bills %}<div class="cbs">
+      {% for e in day.bills %}
+      <a class="cb {{ e.status }}" href="/bills/{{ e.bill.id }}" title="{{ e.bill.name }}: {{ {'paid': 'paid ' ~ (e.txn.date|short if e.txn else ''), 'pending': 'pending', 'due': 'to come', 'missed': 'no payment seen'}[e.status] }}">
+        <span>{{ e.bill.name }}</span><b>{{ e.amount|money }}</b>
+        <span class="sr-only">{{ {'paid': ', paid', 'pending': ', pending', 'due': ', to come', 'missed': ', no payment seen'}[e.status] }}</span>
+      </a>
+      {% endfor %}
+      {% if day.bills|length > 1 %}<span class="ct">{{ day.total|money }}</span>{% endif %}
+      </div>{% endif %}
+    </li>
+    {% endfor %}
+    <li class="cw{{ ' zero' if not w.total }}"><small>Week of {{ w.days[0].date|short }}</small><b>{{ w.total|money if w.total else '–' }}</b></li>
+    {% endfor %}
+  </ol>
+  <ul class="callegend" aria-label="Key">
+    <li><i class="paid"></i>Paid</li><li><i class="pending"></i>Pending</li><li><i class="due"></i>To come</li><li><i class="missed"></i>No payment seen</li>
+  </ul>
+</section>
+
+{% if c.bills %}
+<section class="block calbills">
+  <header><h2>Each bill this {{ unit }}</h2><a class="small" href="/bills">All bills</a></header>
+  <table class="nosearch calbilltable">
+    <thead><tr><th>Bill</th><th class="opt">Due</th><th class="num">Paid</th><th class="num">{{ 'Missed' if c.is_past else 'Not paid yet' }}</th><th class="num">Total</th></tr></thead>
+    <tbody>
+    {% for r in c.bills %}
+    <tr>
+      <td><a href="/bills/{{ r.bill.id }}">{{ r.bill.name }}</a>{% if not r.bill.active %} <span class="chip">paused</span>{% endif %}</td>
+      <td class="muted opt" data-sort="{{ r.dates[0].isoformat() }}">{{ r.dates|map('short')|join(', ') if r.count <= 3 else (r.count ~ ' times, from ' ~ r.dates[0]|short) }}</td>
+      <td class="num" data-sort="{{ r.paid }}">{{ r.paid|money if r.paid else '–' }}</td>
+      <td class="num {{ 'neg' if r.missed }}" data-sort="{{ r.due + r.missed }}">{{ (r.due + r.missed)|money if r.due + r.missed else '–' }}</td>
+      <td class="num key" data-sort="{{ r.total }}">{{ r.total|money }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr class="total"><td>{{ c.bills|length }} bill{{ 's' if c.bills|length != 1 }}</td><td class="opt"></td><td class="num">{{ (t.paid + t.pending)|money }}</td><td class="num">{{ (t.due + t.missed)|money }}</td><td class="num">{{ t.all|money }}</td></tr></tfoot>
+  </table>
+</section>
+{% elif not c.entries %}
+<p class="muted">No bills are due this {{ unit }}. <a href="/bills">Add your recurring bills</a> to see them here.</p>
+{% endif %}
+{% endblock %}

@@ -118,26 +118,12 @@
 </section>
 {% endif %}
 
-{% if not d.is_past and not setup %}
-<div class="runway" role="list" aria-label="Days {{ until }}">
-  {% for day in d.runway %}
-  <div role="listitem" class="day {% if loop.first %}today{% endif %} {% if day.date.weekday() >= 5 %}weekend{% endif %} {% if day.bills %}has-bill{% endif %}">
-    <span class="wd">{{ 'Today' if loop.first else day.date.strftime('%a') }}</span>
-    <span class="dn">{{ day.date.day }}</span>
-    {% for u in day.bills %}
-      <a href="/bills/{{ u.bill.id }}" class="bill {% if u.overdue %}overdue{% endif %}"><span>{{ u.bill.name }}</span>{{ u.bill.amount|money }}</a>
-    {% endfor %}
-  </div>
-  {% endfor %}
-  <div role="listitem" class="day payday"><span class="wd">{{ 'New month' if d.calendar else 'Payday' }}</span><span class="dn">{{ d.payday.day }}</span></div>
-</div>
-{% endif %}
-
 <div class="ov-grid">
   <div class="ov-col">
   {# ---------- bills ---------- #}
   <section class="block" id="bills">
-    <header><h2>Bills</h2><a class="small" href="/bills">All bills</a></header>
+    {% set cal = '/calendar' ~ ('?offset=' ~ d.offset if d.is_past else '') %}
+    <header><h2>{{ 'Bills missed' if d.is_past else 'Bills to come' }}</h2><span class="small"><a href="{{ cal }}">Calendar</a> · <a href="/bills">All bills</a></span></header>
     {% if not d.upcoming and not d.paid %}
     <p class="muted empty-note">No bills due{% if not d.is_past %}. <a href="/bills">Add your recurring bills</a> to see what’s still to come{% endif %}.</p>
     {% else %}
@@ -148,22 +134,21 @@
       <div class="due"><dt>{{ 'Missed' if d.is_past else 'To come' }}</dt><dd>{{ d.to_come|money }}</dd>{% if overdue and not d.is_past %}<small>{{ overdue|money }} overdue</small>{% endif %}</div>
       <div class="all"><dt>All bills</dt><dd>{{ d.bills_total|money }}</dd></div>
     </dl>
+    {% if d.upcoming %}
     <ul class="billrows">
       {% for u in d.upcoming %}
+      {% set days = (u.due - d.today).days %}
       <li class="{{ 'late' if u.overdue else 'due' }}">
         <span class="when"><b>{{ u.due.day }}</b>{{ u.due.strftime('%b') }}</span>
-        <a href="/bills/{{ u.bill.id }}" class="what">{{ u.bill.name }}<small>{{ ('No payment seen, was due ' ~ u.due|nice) if u.overdue else ('Due ' ~ u.due|nice) }}</small></a>
+        <a href="/bills/{{ u.bill.id }}" class="what">{{ u.bill.name }}<small>{% if u.overdue %}No payment seen, was due {{ u.due|nice }}{% elif days == 0 %}Due today{% elif days == 1 %}Due tomorrow, {{ u.due|nice }}{% else %}Due {{ u.due|nice }}, in {{ days }} days{% endif %}</small></a>
         <span class="amt">{{ u.bill.amount|money }}</span>
       </li>
       {% endfor %}
-      {% for p in d.paid|reverse %}
-      <li class="{{ 'pend' if p.pending else 'paid' }}">
-        <span class="when"><b>{{ p.due.day }}</b>{{ p.due.strftime('%b') }}</span>
-        <a href="/bills/{{ p.bill.id }}" class="what">{{ p.bill.name }}<small>{{ 'Pending, ' if p.pending else 'Paid ' }}{{ p.txn.date|nice }}</small></a>
-        <span class="amt">{{ (-p.txn.amount)|money }}</span>
-      </li>
-      {% endfor %}
     </ul>
+    {% else %}
+    <p class="muted empty-note">{{ 'Every bill this period was paid.' if d.is_past else 'Nothing else is due before ' ~ ('the 1st' if d.calendar else 'payday') ~ '.' }}</p>
+    {% endif %}
+    {% if d.paid %}<p class="foot small muted">{{ d.paid|length }} bill{{ 's' if d.paid|length != 1 }} paid {{ 'this period' if d.is_past else 'so far' }}, {{ d.bills_paid|money }}. <a href="{{ cal }}">See them on the calendar</a></p>{% endif %}
     {% endif %}
   </section>
 

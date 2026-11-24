@@ -1694,6 +1694,13 @@ def bills_page(request: Request, from_txn: str | None = None, s: Session = Depen
         "pay_accounts": _pay_accounts(s), "page": "bills"})
 
 
+@app.get("/calendar")
+def calendar_page(request: Request, view: str = "pay", offset: int = 0, s: Session = Depends(session)):
+    from .billcal import build_calendar
+    c = build_calendar(s, today(), view, offset)
+    return templates.TemplateResponse(request, "calendar.html", {"c": c, "page": "calendar"})
+
+
 @app.post("/bills/suggestions/dismiss")
 def dismiss_suggestion(name: str = Form(...), s: Session = Depends(session)):
     dismissed = set(json.loads(get_setting(s, "dismissed_subscriptions") or "[]"))
