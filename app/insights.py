@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 
 from .db import Account, Category, Transaction
 from .periods import get_cycle, pay_period
+from .text import nice_case
 
 PALETTE = ["--c1", "--c2", "--c3", "--c4", "--c5", "--c6", "--c7", "--c8"]
 
@@ -19,7 +20,7 @@ def payee_key(t: Transaction) -> str:
     if t.merchant:
         return t.merchant.strip()
     words = [w for w in re.split(r"\s+", t.description) if w and not any(ch.isdigit() for ch in w)]
-    return (" ".join(words[:3]) or t.description).title()
+    return nice_case(" ".join(words[:3]) or t.description)
 
 
 class Ctx:
@@ -56,6 +57,11 @@ class Ctx:
         if end:
             q = q.where(Transaction.date < end)
         return self.s.exec(q.order_by(Transaction.date.desc())).all()
+
+    def pieces(self, start: date | None = None, end: date | None = None) -> list:
+        """As txns(), with split transactions counted part by part, for totals by category."""
+        from .splits import expand  # local import keeps this module's imports small
+        return expand(self.s, self.txns(start, end))
 
 
 # ---------- payees ----------
@@ -108,9 +114,13 @@ def payee_detail(ctx: Ctx, name: str) -> dict:
 # ---------- summary ----------
 def period_summary(ctx: Ctx, offset: int) -> dict:
     start, end = ctx.period(offset)
-    txns = ctx.txns(start, end)
+    whole = ctx.txns(start, end)
+    from .splits import expand  # local import keeps this module's imports small
+    txns = expand(ctx.s, whole)  # split transactions count part by part in the totals below
     income = sum(t.amount for t in txns if t.amount > 0 and ctx.kind(t) == "income" and ctx.counts(t))
     spending = [t for t in txns if ctx.is_spending(t)]
+    split_spending = {p.split_of.id for p in spending if hasattr(p, "split_of")}
+    shops = [t for t in whole if ctx.is_spending(t) or t.id in split_spending]  # whole purchases, for payees
     spent = -sum(t.amount for t in spending)
     bills = -sum(t.amount for t in spending if t.bill_id is not None)
     day_to_day = spent - bills
@@ -137,8 +147,8 @@ def period_summary(ctx: Ctx, offset: int) -> dict:
         billed = -sum(t.amount for t in spending if t.date == d and t.bill_id is not None)
         daily.append({"date": d, "future": d > ctx.today, "value": settled + unsettled, "pending": unsettled,
                       "bills": billed})
-    purchases = [t for t in spending if t.amount < 0 and t.bill_id is None]
-    payees = [g for g in payee_groups(ctx, spending) if g["out"] > 0]
+    purchases = [t for t in shops if t.amount < 0 and t.bill_id is None]
+    payees = [g for g in payee_groups(ctx, shops) if g["out"] > 0]
     tags: dict[str, list] = {}
     for t in spending:
         for tag in {x.strip() for x in (t.tags or "").split(",") if x.strip()}:
@@ -288,6 +298,38 @@ def bars(values: list[float], labels: list[str], target: float | None = None,
 
 
 
+# ---------- trends across pay periods ----------
+def trends(ctx: Ctx, count: int = 6, top_categories: int = 8) -> dict:
+    """The last `count` pay periods side by side, oldest first: income, bills, day to day and kept for each,
+    and spending in the biggest categories. The current period is included, marked as not finished."""
+    periods = []
+    for offset in range(-(count - 1), 1):
+        p = period_summary(ctx, offset)
+        p["current"] = offset == 0 and ctx.today < p["end"]
+        p["cats"] = {cid: v for _, v, cid in p["categories"]}
+        periods.append(p)
+    finished = [p for p in periods if not p["current"]] or periods
+    names: dict[int, str] = {}
+    totals: dict[int, float] = defaultdict(float)
+    for p in periods:
+        for name, v, cid in p["categories"]:
+            names[cid] = name
+            totals[cid] += v
+    top = sorted(totals, key=lambda cid: -totals[cid])[:top_categories]
+    n = len(finished)
+    avg = lambda key: sum(p[key] for p in finished) / n  # noqa: E731
+    income = avg("income")
+    return {
+        "periods": periods,
+        "categories": [{"id": cid, "name": names[cid], "amounts": [p["cats"].get(cid, 0.0) for p in periods],
+                        "average": sum(p["cats"].get(cid, 0.0) for p in finished) / n} for cid in top],
+        "average": {"income": income, "spent": avg("spent"), "bills": avg("bills"), "day_to_day": avg("day_to_day"),
+                    "saved": avg("saved"), "per_day": avg("per_day"),
+                    "rate": (income - avg("spent")) / income if income else None},
+        "finished": n,
+    }
+
+
 # ---------- subscriptions ----------
 FREQUENCIES = [("weekly", 5, 9), ("fortnightly", 12, 17), ("monthly", 26, 35), ("quarterly", 80, 100),
                ("yearly", 345, 385)]
@@ -335,7 +377,7 @@ LIMIT_PERIODS = 3
 
 def category_spend(ctx: "Ctx", start: date, end: date, bills: bool = True) -> dict[int, float]:
     totals: dict[int, float] = defaultdict(float)
-    for t in ctx.txns(start, end):
+    for t in ctx.pieces(start, end):
         if ctx.is_spending(t) and (bills or t.bill_id is None):
             totals[t.category_id] -= t.amount
     return totals

@@ -74,7 +74,7 @@
 </header>
 
 <main>{% block content %}{% endblock %}</main>
-<footer class="sitefoot"><nav aria-label="About"><a href="/help">Help</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/legal/security">Security</a><a href="/contact">Contact</a><span class="ver">Payday {{ version }}</span></nav></footer>
+<footer class="sitefoot"><nav aria-label="About"><a href="/help">Help</a><a href="/legal/privacy">Privacy</a><a href="/legal/terms">Terms</a><a href="/legal/security">Security</a><a href="/contact">Contact</a><a class="ver" href="/updates" data-version="{{ version }}" title="What’s new in each version">Payday {{ version }}</a></nav></footer>
 
 {% if me and prof %}
 <nav class="tabbar" aria-label="Main">

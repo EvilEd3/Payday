@@ -4,6 +4,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
  && groupadd --gid 10001 payday && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /srv payday
 COPY app ./app
+COPY CHANGELOG.md ./
 ENV DATABASE_URL=sqlite:////data/budget.db \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

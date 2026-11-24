@@ -9,7 +9,7 @@ import httpx
 from sqlalchemy import text
 from sqlmodel import Session, delete, select
 
-from . import vault
+from . import splits, vault
 from .categorise import Categoriser, categorise, pair_transfers
 from .db import PG, SPENDING_TYPES, base_engine, Account, PendingTransaction, Transaction, current_engine, current_profile_id, set_setting, use_profile
 
@@ -226,6 +226,7 @@ def _replace_stale(s: Session, stale: list[Transaction], added: list[Transaction
                 if old.category_source == "manual":
                     twin.category_id, twin.category_source = old.category_id, "manual"
                     twin.bill_id, twin.bill_due_date = old.bill_id, old.bill_due_date
+                    splits.move(s, old.id, twin.id)
                 s.add(twin)
                 moved += 1
         if old.transfer_id:
@@ -234,6 +235,7 @@ def _replace_stale(s: Session, stale: list[Transaction], added: list[Transaction
                 other.transfer_id = None
                 categorise(s, other)
                 s.add(other)
+        splits.clear(s, old.id)
         s.delete(old)
     s.commit()
     return moved
