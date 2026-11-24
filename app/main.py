@@ -271,7 +271,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 # Reachable without signing in. Each of these checks its own proof (password, a 2FA step cookie or a one-time link).
 PUBLIC_PATHS = ("/login", "/setup", "/invite/", "/reset/", "/2fa/", "/manifest.webmanifest", "/sw.js", "/static/",
                 "/theme.css", "/favicon.ico", "/welcome", "/signup", "/verify/", "/forgot", "/legal/", "/help",
-                "/contact")
+                "/contact", "/updates")
 # Paths that work without a profile chosen.
 NO_PROFILE_PATHS = ("/site", "/me", "/logout", "/profiles/", "/no-profile")
 # Changes a read-only member may still make (their own preferences, sign-in and which profile they're viewing).
@@ -2812,6 +2812,14 @@ def legal(request: Request, page: str):
 @app.get("/contact")
 def contact(request: Request):
     return templates.TemplateResponse(request, "contact.html", {"page": "legal", "info": site_info()})
+
+
+@app.get("/updates")
+def updates_page(request: Request):
+    """What's changed in each version, from CHANGELOG.md. Opened from the version number in the footer."""
+    from .changelog import releases
+    return templates.TemplateResponse(request, "updates.html", {"page": "updates", "info": site_info(),
+                                                                "releases": releases()})
 
 
 @app.get("/help")

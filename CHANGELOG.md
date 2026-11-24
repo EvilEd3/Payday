@@ -12,6 +12,9 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 - **First steps on a new household**: until your bank's accounts arrive, the Overview shows a short setup list
   instead of "$0.00 a day".
 
+- **What's new**: click the version number at the bottom of any page to see what changed in each version.
+  After an update, a "What's new" tag sits beside it until you've had a look.
+
 ## 1.1.0
 
 **Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set

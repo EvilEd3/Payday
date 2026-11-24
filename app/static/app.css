@@ -918,3 +918,11 @@ input.tiny { width: 4.5rem; }
 .setup-steps li.done::before { content: "✓"; background: var(--on-hero); color: var(--hero); }
 .setup-steps li.done strong { opacity: .7; text-decoration: line-through; }
 .setup-steps li > span { font-size: .875rem; opacity: .8; }
+
+/* ---- What's new (/updates) ---- */
+.release { border-top: 1px solid var(--line); margin-top: 1.5rem; }
+.release h2 { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.release.current .chip { background: var(--bush-soft); color: var(--bush); }
+.release ul ul { margin: .3rem 0 .4rem; }
+.sitefoot a.ver.new::after { content: "What’s new"; margin-left: .5rem; font-size: .75rem; padding: .05rem .5rem;
+  border-radius: 99px; background: var(--bush-soft); color: var(--bush); }
