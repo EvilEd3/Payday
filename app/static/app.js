@@ -447,9 +447,6 @@
     show();
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
-
   /* ---- "What's new" beside the version number after an update, until you've opened the update log ---- */
   function whatsNew() {
     const link = document.querySelector(".sitefoot a.ver[data-version]");
@@ -460,7 +457,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    whatsNew(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
+    whatsNew(); splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
     tidyAddress();
     restoreScroll();
   });
