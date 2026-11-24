@@ -28,6 +28,11 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 - **What's new**: click the version number at the bottom of any page to see what changed in each version.
   After an update, a "What's new" tag sits beside it until you've had a look.
 
+- **Net worth** (More, Net worth; or from the Accounts card): everything you have less everything you owe, including
+  KiwiSaver and savings, plus your home and mortgage from the Mortgage page. A month-by-month line for the last 12
+  or 24 months, worked back from your transactions. Each sync now saves the day's balances, so values that change
+  without transactions (like KiwiSaver) are tracked from now on.
+
 ## 1.1.0
 
 **Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set
