@@ -1790,6 +1790,16 @@ def summary(request: Request, offset: int = 0, s: Session = Depends(session)):
         "kept": kept, "in_progress": in_progress, "to_come": to_come})
 
 
+@app.get("/networth")
+def networth_page(request: Request, months: int = 12, s: Session = Depends(session)):
+    """Everything you have less everything you owe, and how that's moved month by month."""
+    from . import networth
+    months = 24 if months >= 24 else 12
+    n = networth.build(s, today(), months)
+    return templates.TemplateResponse(request, "networth.html", {"n": n, "chart": networth.line_chart(n["history"]),
+                                                                 "months": months, "page": "networth"})
+
+
 def rate_warning(s: Session) -> float | None:
     try:
         v = float(get_setting(s, "day_rate_warning") or 0)

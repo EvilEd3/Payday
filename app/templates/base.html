@@ -1,5 +1,5 @@
 {% set me = request.state.user %}
-{% set more_pages = ['payees', 'goals', 'settings', 'mortgage', 'site'] %}
+{% set more_pages = ['payees', 'goals', 'settings', 'mortgage', 'networth', 'site'] %}
 {% set prof = request.state.profile %}{% set profs = request.state.profiles %}
 <!doctype html>
 {% set bc = browser_colour(me.theme if me else 'bush', me.mode if me else 'auto') %}
@@ -91,6 +91,7 @@
     <div class="sheet">
       <a href="/payees" {% if page=='payees' %}aria-current="page"{% endif %}>Payees</a>
       <a href="/goals" {% if page=='goals' %}aria-current="page"{% endif %}>Goals</a>
+      <a href="/networth" {% if page=='networth' %}aria-current="page"{% endif %}>Net worth</a>
       {% if has_loan() %}<a href="/mortgage" {% if page=='mortgage' %}aria-current="page"{% endif %}>Mortgage</a>{% endif %}
       <a href="/settings" {% if page=='settings' %}aria-current="page"{% endif %}>Settings</a>
       {% if me.is_owner %}<a href="/site" {% if page=='site' %}aria-current="page"{% endif %}>Households and sign-ins</a>{% endif %}

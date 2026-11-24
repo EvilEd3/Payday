@@ -180,7 +180,7 @@
   {# ---------- accounts ---------- #}
   {% if not d.is_past %}
   <section class="block" id="accounts">
-    <header><h2>Accounts</h2><a class="small admin-only" href="/settings?tab=accounts">Choose what counts</a></header>
+    <header><h2>Accounts</h2><span class="small"><a href="/networth">Net worth</a><span class="admin-only"> · <a href="/settings?tab=accounts">Choose what counts</a></span></span></header>
     <ul class="accrows">
       {% for a in d.all_accounts %}
       {% set bal = d.balances[a.id] %}

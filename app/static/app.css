@@ -907,3 +907,17 @@ input.tiny { width: 4.5rem; }
 .devices li > span { display: grid; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
+
+/* ---- Net worth ---- */
+.nwchart { position: relative; height: var(--h); margin: .5rem 0 0 4.5rem; }
+.nwchart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.nw-line { fill: none; stroke: var(--bush); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.nw-area { fill: color-mix(in srgb, var(--bush) 12%, transparent); }
+.nw-zero { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 4 4; }
+.nw-dot { position: absolute; width: .55rem; height: .55rem; border-radius: 50%; background: var(--bush);
+  border: 2px solid var(--surface); transform: translate(-50%, -50%); }
+.nw-y { position: absolute; left: -4.5rem; width: 4rem; text-align: right; font-size: .6875rem; color: var(--muted); }
+.nw-y.top { top: 0; transform: translateY(-50%); }
+.nw-y.bottom { bottom: 0; transform: translateY(50%); }
+.nw-axis { display: flex; justify-content: space-between; margin: .5rem 0 0 4.5rem; font-size: .6875rem; color: var(--muted); }
+.nw-axis span { flex: 0 0 auto; width: 0; display: flex; justify-content: center; white-space: nowrap; }

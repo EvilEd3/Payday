@@ -233,6 +233,14 @@ class Transaction(SQLModel, table=True):
     reviewed: bool = False  # you've checked a guessed category (Akahu's, or the fallback) and it's right
 
 
+class BalanceSnapshot(SQLModel, table=True):
+    """An account's balance as a sync saw it, one per account per day, for net worth over time."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    account_id: str = Field(index=True)
+    date: Date = Field(index=True)
+    balance: float
+
+
 class User(SQLModel, table=True):
     """A person who can sign in (site database). What they can do depends on the profile: see Membership."""
     id: Optional[int] = Field(default=None, primary_key=True)

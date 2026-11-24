@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Net worth · Payday{% endblock %}
+{% block content %}
+{% macro change(v, since) %}{% if v is not none %}<span class="chg {{ 'pos' if v >= 0 else 'neg' }}">{{ '+' if v >= 0 else '−' }}{{ v|abs|money }} since {{ since }}</span>{% endif %}{% endmacro %}
+<div class="pagehead">
+  <div>
+    <h1>Net worth</h1>
+    <p class="sub">Everything you have, less everything you owe. Accounts that aren’t counted in your budget are included.</p>
+  </div>
+  <div class="headtools">
+    <nav class="pills" aria-label="How far back">
+      {% for m in [12, 24] %}<a href="/networth?months={{ m }}" {% if months == m %}aria-current="page"{% endif %}>{{ m }} months</a>{% endfor %}
+    </nav>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><b class="{{ 'pos' if n.total >= 0 else 'neg' }}">{{ n.total|money }}</b><span>Net worth today</span>
+    {{ change(n.since_month, 'the end of ' ~ n.month_date.strftime('%B')) if n.month_date }}</div>
+  <div class="kpi"><b>{{ n.assets_total|money }}</b><span>What you have</span></div>
+  <div class="kpi"><b>{{ (-n.debts_total)|money }}</b><span>What you owe</span></div>
+  <div class="kpi"><b class="{{ 'pos' if (n.since_start or 0) >= 0 else 'neg' }}">{% if n.since_start is not none %}{{ '+' if n.since_start >= 0 else '−' }}{{ n.since_start|abs|money }}{% else %}–{% endif %}</b>
+    <span>Change since {{ n.start_date|dmy }}</span></div>
+</div>
+
+{% if n.history|length > 1 %}
+<section class="section">
+  <h2>Month by month</h2>
+  <div class="panel">
+    <div class="nwchart" style="--h: {{ chart.height }}px" role="img" aria-label="Net worth from {{ n.history[0].total|round|int }} dollars on {{ n.history[0].date|dmy }} to {{ n.total|round|int }} dollars today">
+      <span class="nw-y top"><span class="m">{{ chart.high|dollars }}</span></span>
+      <span class="nw-y bottom"><span class="m">{{ chart.low|dollars }}</span></span>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {% if chart.zero is not none %}<line x1="0" x2="100" y1="{{ chart.zero }}" y2="{{ chart.zero }}" class="nw-zero"/>{% endif %}
+        <polygon points="0,100 {{ chart.points }} 100,100" class="nw-area"/>
+        <polyline points="{{ chart.points }}" class="nw-line"/>
+      </svg>
+      {% for x, y in chart.dots %}<span class="nw-dot" style="left: {{ x }}%; top: {{ y }}%" title="{{ n.history[loop.index0].date|dmy }}"></span>{% endfor %}
+    </div>
+    <div class="nw-axis" style="--n: {{ n.history|length }}">{% for h in n.history %}<span>{{ 'Today' if loop.last else h.date.strftime('%b') }}</span>{% endfor %}</div>
+  </div>
+  <p class="muted small">Past balances are worked back from today’s and the transactions since, or taken from a sync on that day when there was one.</p>
+</section>
+{% endif %}
+
+<div class="grid2 two section">
+  {% for title, rows, total in [('What you have', n.assets, n.assets_total), ('What you owe', n.debts, n.debts_total)] %}
+  <section>
+    <h2>{{ title }}</h2>
+    <div class="panel flush"><table class="nosearch nosort">
+      <tbody>
+      {% for r in rows %}
+      <tr><td><a href="{{ r.href }}">{{ r.name }}</a>{% if r.detail %}<div class="sub muted small">{{ r.detail }}</div>{% endif %}</td>
+        <td class="num {{ 'neg' if r.amount < 0 }}">{{ r.amount|money }}</td></tr>
+      {% else %}<tr><td colspan="2" class="muted">Nothing here.</td></tr>{% endfor %}
+      {% if rows %}<tr class="total"><td><strong>Total</strong></td><td class="num"><strong>{{ total|money }}</strong></td></tr>{% endif %}
+      </tbody>
+    </table></div>
+  </section>
+  {% endfor %}
+</div>
+{% if not n.assets|selectattr('name', 'equalto', 'Home')|list %}
+<p class="muted small">Own a home? Add it on the <a href="/mortgage">Mortgage</a> page with its value, and it’s counted here.</p>
+{% endif %}
+{% endblock %}
