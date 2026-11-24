@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 
 from .db import Account, Category, Transaction
 from .periods import get_cycle, pay_period
+from .text import nice_case
 
 PALETTE = ["--c1", "--c2", "--c3", "--c4", "--c5", "--c6", "--c7", "--c8"]
 
@@ -19,7 +20,7 @@ def payee_key(t: Transaction) -> str:
     if t.merchant:
         return t.merchant.strip()
     words = [w for w in re.split(r"\s+", t.description) if w and not any(ch.isdigit() for ch in w)]
-    return (" ".join(words[:3]) or t.description).title()
+    return nice_case(" ".join(words[:3]) or t.description)
 
 
 class Ctx:
