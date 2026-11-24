@@ -6,6 +6,16 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Activity log**: a new Activity page (in the menu, and More on a phone) keeps a full record of your household:
+  every transaction the bank sends and where it was allocated (a category, a bill, a transfer), each transfer Payday
+  matched, transactions re-sorted after a rule or bill changed, each sync step by step, every notification sent and
+  who got it, and the changes people make by hand. Filter by kind or search it. Admins choose what's recorded and how
+  long it's kept, or clear it, in Settings, Activity log, and can change a transaction's category or bill straight
+  from its entry.
+- **Notifications open the right page**: tapping a notification opens its entry in the log, with the full message
+  and a button to the bill, account or transactions it's about, in the right household. On Android, tapping one
+  while Payday is in the background now brings it to the front instead of leaving you on the home screen.
+
 ## 1.3.0
 
 - **Loans**: the Mortgage page is now Loans, and holds as many loans as you have: a mortgage, a car loan, a
