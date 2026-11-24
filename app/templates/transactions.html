@@ -73,6 +73,14 @@
     </td>
     <td class="c-acct">{% if acc %}<a href="/accounts/{{ acc.id }}">{{ acc.name }}</a>{% endif %}{% if acc and acc.institution %}<div class="sub">{{ acc.institution }}</div>{% endif %}</td>
     <td class="c-cat">
+      {% set parts = split_map.get(t.id) %}
+      {% if t.split_of is defined %}
+      <span>{{ cat_map[t.category_id].name if t.category_id in cat_map else '' }}</span>
+      <div class="why"><a href="/transactions/{{ t.id }}/split?next={{ back|urlencode }}">Part of a {{ t.split_of.amount|abs|money }} split</a>{% if t.part.note %}: {{ t.part.note }}{% endif %}</div>
+      {% elif parts %}
+      <ul class="splitparts">{% for p in parts %}<li><span>{{ cat_map[p.category_id].name if p.category_id in cat_map else '' }}{% if p.note %} <span class="muted">({{ p.note }})</span>{% endif %}</span><span class="num">{{ p.amount|abs|money }}</span></li>{% endfor %}</ul>
+      <div class="why admin-only"><a href="/transactions/{{ t.id }}/split?next={{ back|urlencode }}">Change split</a></div>
+      {% else %}
       <span class="viewer-only">{{ cat_map[t.category_id].name if t.category_id in cat_map else '' }}</span>
       <form class="admin-only" method="post" action="/transactions/{{ t.id }}/category">
         <input type="hidden" name="next" value="{{ back }}">
@@ -86,6 +94,7 @@
       </form>
       {% elif t.category_source in ('akahu', 'refund', 'default') and not t.reviewed and not t.transfer_id and not t.bill_id %}<div class="why"><a href="/review">{{ 'Looks like a refund. Review it' if t.category_source == 'refund' else 'A guess. Review it' }}</a></div>
       {% elif why.get(t.category_source) %}<div class="why">{{ why[t.category_source] }}</div>{% endif %}
+      {% endif %}
     </td>
     <td class="c-notes{{ ' blank' if not t.note and not t.tags.strip() }}">{% if t.note %}<div class="note">{{ t.note }}</div>{% endif %}{% if t.tags.strip() %}<div class="marks">{% for tg in t.tags.split(',') if tg.strip() %}<a class="chip" href="/transactions?tag={{ tg.strip()|urlencode }}">#{{ tg.strip() }}</a>{% endfor %}</div>{% endif %}</td>
     <td class="c-amt num {{ 'pos' if t.amount > 0 }}" data-sort="{{ t.amount }}">{{ t.amount|money(True) }}</td>
@@ -117,6 +126,10 @@
               </select></label>{% endif %}
             <a class="small" href="/bills?from_txn={{ t.id }}#add">Make this a new recurring bill</a>
           </form>
+          {% endif %}
+          {% if not t.bill_id and not t.transfer_id and t.amount|abs >= 0.02 %}
+          <hr>
+          <a class="small" href="/transactions/{{ t.id }}/split?next={{ back|urlencode }}">{{ 'Change the split' if split_map.get(t.id) or t.split_of is defined else 'Split across categories' }}</a>
           {% endif %}
           {% if t.category_source == 'manual' %}
           <hr>

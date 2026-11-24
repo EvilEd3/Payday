@@ -908,6 +908,11 @@ input.tiny { width: 4.5rem; }
 .devices small { font-size: .8125rem; }
 [data-push-msg].bad { color: var(--rata); }
 
+/* ---- split transactions ---- */
+.splitparts { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; font-size: .875rem; }
+.splitparts li { display: flex; justify-content: space-between; gap: .75rem; }
+.splitform table select, .splitform table input { width: 100%; }
+
 /* ---- Trends ---- */
 .headtools { display: flex; align-items: center; gap: .5rem .75rem; flex-wrap: wrap; }
 .pills { display: inline-flex; gap: 2px; padding: 3px; border-radius: 99px; background: var(--sunk); }

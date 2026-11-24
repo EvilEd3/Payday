@@ -20,10 +20,10 @@ from fastapi.templating import Jinja2Templates
 import httpx
 import segno
 from markupsafe import Markup, escape
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
-from . import akahu, data, mailer, mortgage, themes, vault
+from . import akahu, data, mailer, mortgage, splits, themes, vault
 from .bills import APPROX_DAYS, match_pending, nearest_unpaid_due, occurrences, suggest_bill, valid_pattern
 from .categorise import (categorise, rule_matches, find_partner, get_or_create_category, learn, link_transfer,
                          pair_transfers, recategorise_all)
@@ -34,7 +34,7 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
                    password_problem, profile_admins, refresh_cookie, use_backup_code, user_from_cookie,
                    user_from_pre_cookie, verify_password)
 from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
-                 PropertyValue, Rule, Setting, Transaction, User, current_engine, current_profile_id, get_setting,
+                 PropertyValue, Rule, Setting, Split, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
 from .insights import (Ctx, bars, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
                        needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups,
@@ -1381,9 +1381,13 @@ def transactions(request: Request, offset: int = 0, category: int | None = None,
     all_time = bool(search or tag)
     q = select(Transaction) if all_time else select(Transaction).where(Transaction.date >= start,
                                                                       Transaction.date < end)
-    if category is not None:
-        q = q.where(Transaction.category_id == category)
+    if category is not None:  # this category, or split with a part in it
+        q = q.where(or_(Transaction.category_id == category,
+                        Transaction.id.in_(select(Split.txn_id).where(Split.category_id == category))))
     txns = s.exec(q.order_by(Transaction.date.desc())).all()
+    if category is not None or view:
+        # totals by category count a split transaction part by part, so these lists do too
+        txns = [t for t in splits.expand(s, txns) if category is None or t.category_id == category]
     cats = s.exec(select(Category).order_by(Category.name)).all()
     cat_map = {c.id: c for c in cats}
     accounts = {a.id: a for a in s.exec(select(Account))}
@@ -1424,6 +1428,7 @@ def transactions(request: Request, offset: int = 0, category: int | None = None,
     partners = {t.id: t for t in s.exec(select(Transaction).where(Transaction.id.in_(others)))} if others else {}
     return templates.TemplateResponse(request, "transactions.html", {
         "txns": txns, "cats": cats, "cat_map": cat_map,
+        "split_map": splits.parts_for(s, {t.id for t in txns if not hasattr(t, "split_of")}),
         "bills": {b.id: b for b in s.exec(select(Bill))},
         "accounts": accounts, "partners": partners, "view": view, "view_title": VIEW_TITLES.get(view, ""),
         "day": day_date, "payee": payee, "search": search, "tag": tag, "all_time": all_time,
@@ -1489,6 +1494,7 @@ def set_category(txn_id: str, category_id: int = Form(...), next: str = Form(TXN
             categorise(s, other)
             s.add(other)
     txn.category_id, txn.category_source, txn.reviewed = new_cat.id, "manual", True
+    splits.clear(s, txn.id)  # one category for the whole transaction again
     s.add(txn)
     s.commit()
     if new_cat.kind == "transfer" and not txn.transfer_id:
@@ -1499,6 +1505,76 @@ def set_category(txn_id: str, category_id: int = Form(...), next: str = Form(TXN
             s.commit()
     # "changed" lets the page offer to use this category for the payee from now on
     return back(_add_param(_safe_next(next), "changed", txn.id))
+
+
+def _splittable(txn: Transaction | None) -> bool:
+    """Bills and transfers are matched as a whole, so they aren't split."""
+    return bool(txn) and abs(txn.amount) >= 0.02 and txn.bill_id is None and txn.transfer_id is None
+
+
+@app.get("/transactions/{txn_id}/split")
+def split_page(request: Request, txn_id: str, next: str = TXN_PAGE, bad: str = "", s: Session = Depends(session)):
+    txn = s.get(Transaction, txn_id)
+    if not _splittable(txn):
+        return back(_safe_next(next))
+    parts = splits.parts_for(s, [txn.id]).get(txn.id, [])
+    rows = [{"category_id": p.category_id, "amount": f"{abs(p.amount):.2f}", "note": p.note} for p in parts]
+    if not rows:
+        rows = [{"category_id": txn.category_id, "amount": f"{abs(txn.amount):.2f}", "note": ""},
+                {"category_id": None, "amount": "", "note": ""}]
+    rows += [{"category_id": None, "amount": "", "note": ""}] * max(0, SPLIT_ROWS - len(rows))
+    return templates.TemplateResponse(request, "split.html", {
+        "t": txn, "rows": rows, "split": bool(parts), "next": _safe_next(next), "bad": bad,
+        "cats": s.exec(select(Category).where(Category.kind == "expense").order_by(Category.name)).all()
+        if txn.amount < 0 else s.exec(select(Category).order_by(Category.name)).all(),
+        "account": s.get(Account, txn.account_id), "page": "transactions"})
+
+
+SPLIT_ROWS = 5
+
+
+@app.post("/transactions/{txn_id}/split")
+async def save_split(request: Request, txn_id: str, s: Session = Depends(session)):
+    form = await request.form()
+    next_ = _safe_next(str(form.get("next") or TXN_PAGE))
+    txn = s.get(Transaction, txn_id)
+    if not _splittable(txn):
+        return back(next_)
+    sign = -1 if txn.amount < 0 else 1
+    parts, seen = [], set()
+    for cid, amount, note in zip(form.getlist("category_id"), form.getlist("amount"), form.getlist("note")):
+        amount = str(amount).replace("$", "").replace(",", "").strip()
+        if not amount and not str(cid):
+            continue
+        try:
+            value = round(abs(float(amount)), 2)
+        except ValueError:
+            value = 0
+        cat = s.get(Category, int(cid)) if str(cid).isdigit() else None
+        if value < 0.005 and not cat:
+            continue
+        if not cat or value < 0.005 or cat.id in seen:
+            return back(f"/transactions/{txn_id}/split?bad=parts&next={quote(next_, safe='')}")
+        seen.add(cat.id)
+        parts.append(Split(txn_id=txn.id, amount=sign * value, category_id=cat.id, note=str(note).strip()[:200]))
+    if len(parts) < 2 or abs(sum(p.amount for p in parts) - txn.amount) >= 0.005:
+        return back(f"/transactions/{txn_id}/split?bad=sum&next={quote(next_, safe='')}")
+    splits.clear(s, txn.id)
+    for p in parts:
+        s.add(p)
+    biggest = max(parts, key=lambda p: abs(p.amount))  # what the transaction shows where one category is needed
+    txn.category_id, txn.category_source, txn.reviewed = biggest.category_id, "manual", True
+    s.add(txn)
+    s.commit()
+    return back(next_)
+
+
+@app.post("/transactions/{txn_id}/unsplit")
+def unsplit(txn_id: str, next: str = Form(TXN_PAGE), s: Session = Depends(session)):
+    if s.get(Transaction, txn_id):
+        splits.clear(s, txn_id)
+        s.commit()
+    return back(_safe_next(next))
 
 
 @app.post("/transactions/{txn_id}/remember")
@@ -1514,6 +1590,7 @@ def reset_category(txn_id: str, next: str = Form(TXN_PAGE), s: Session = Depends
     txn = s.get(Transaction, txn_id)
     if txn:
         txn.category_source = ""
+        splits.clear(s, txn.id)
         categorise(s, txn)
         s.add(txn)
         s.commit()

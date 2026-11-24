@@ -58,6 +58,11 @@ class Ctx:
             q = q.where(Transaction.date < end)
         return self.s.exec(q.order_by(Transaction.date.desc())).all()
 
+    def pieces(self, start: date | None = None, end: date | None = None) -> list:
+        """As txns(), with split transactions counted part by part, for totals by category."""
+        from .splits import expand  # local import keeps this module's imports small
+        return expand(self.s, self.txns(start, end))
+
 
 # ---------- payees ----------
 def payee_groups(ctx: Ctx, txns: list[Transaction]) -> list[dict]:
@@ -109,9 +114,13 @@ def payee_detail(ctx: Ctx, name: str) -> dict:
 # ---------- summary ----------
 def period_summary(ctx: Ctx, offset: int) -> dict:
     start, end = ctx.period(offset)
-    txns = ctx.txns(start, end)
+    whole = ctx.txns(start, end)
+    from .splits import expand  # local import keeps this module's imports small
+    txns = expand(ctx.s, whole)  # split transactions count part by part in the totals below
     income = sum(t.amount for t in txns if t.amount > 0 and ctx.kind(t) == "income" and ctx.counts(t))
     spending = [t for t in txns if ctx.is_spending(t)]
+    split_spending = {p.split_of.id for p in spending if hasattr(p, "split_of")}
+    shops = [t for t in whole if ctx.is_spending(t) or t.id in split_spending]  # whole purchases, for payees
     spent = -sum(t.amount for t in spending)
     bills = -sum(t.amount for t in spending if t.bill_id is not None)
     day_to_day = spent - bills
@@ -138,8 +147,8 @@ def period_summary(ctx: Ctx, offset: int) -> dict:
         billed = -sum(t.amount for t in spending if t.date == d and t.bill_id is not None)
         daily.append({"date": d, "future": d > ctx.today, "value": settled + unsettled, "pending": unsettled,
                       "bills": billed})
-    purchases = [t for t in spending if t.amount < 0 and t.bill_id is None]
-    payees = [g for g in payee_groups(ctx, spending) if g["out"] > 0]
+    purchases = [t for t in shops if t.amount < 0 and t.bill_id is None]
+    payees = [g for g in payee_groups(ctx, shops) if g["out"] > 0]
     tags: dict[str, list] = {}
     for t in spending:
         for tag in {x.strip() for x in (t.tags or "").split(",") if x.strip()}:
@@ -368,7 +377,7 @@ LIMIT_PERIODS = 3
 
 def category_spend(ctx: "Ctx", start: date, end: date, bills: bool = True) -> dict[int, float]:
     totals: dict[int, float] = defaultdict(float)
-    for t in ctx.txns(start, end):
+    for t in ctx.pieces(start, end):
         if ctx.is_spending(t) and (bills or t.bill_id is None):
             totals[t.category_id] -= t.amount
     return totals

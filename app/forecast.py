@@ -7,6 +7,7 @@ from .bills import match_pending, occurrences
 from .db import Account, Bill, Category, PendingTransaction, Transaction, get_setting
 from .insights import Ctx, category_limits
 from .periods import get_cycle, pay_period
+from .splits import expand
 
 
 OWED_TYPES = ("CREDITCARD", "LOAN")
@@ -131,6 +132,7 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
     txns = session.exec(select(Transaction).where(Transaction.date >= start,
                                                   Transaction.date < payday)).all()
     txns = [t for t in txns if counts(t, acc_map)]  # leave out accounts that aren't part of the budget
+    txns = expand(session, txns)  # a split transaction counts each part in its own category
     income = sum(t.amount for t in txns if t.amount > 0 and kind(t) == "income")
 
     first = session.exec(select(Transaction).order_by(Transaction.date)).first()

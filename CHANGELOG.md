@@ -6,6 +6,10 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Split a transaction across categories**: from a transaction's ··· menu, give parts of it their own categories
+  and notes, such as groceries and cleaning in one supermarket shop. The Overview, Summary, Trends and limits count each
+  part in its own category, and a category's transaction list shows its part. Bills and transfers aren't split.
+
 - **Trends**: your last 6 or 12 pays side by side (Summary, Trends over time). Spending each pay with bills and day to
   day, what you kept and what share of income that was, averages over the finished pays, and your biggest
   categories pay by pay with the unusually high ones in bold.
