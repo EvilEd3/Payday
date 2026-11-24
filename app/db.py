@@ -358,7 +358,8 @@ class PendingTransaction(SQLModel, table=True):
 
 
 class Loan(SQLModel, table=True):
-    """A mortgage. Its history comes from imported rows (your spreadsheet) and then the bank's loan account."""
+    """A loan: a mortgage, car loan or personal loan. Its history comes from imported rows (your spreadsheet) and
+    then the bank's loan account. What it bought (a home, a car) can be valued, and counts in net worth."""
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = "Mortgage"
     account_id: Optional[str] = None  # the Akahu loan account, if connected
@@ -371,6 +372,15 @@ class Loan(SQLModel, table=True):
     fixed_until: Optional[Date] = None
     rate_after: Optional[float] = None  # % p.a. you expect after the fixed term ends
     payment_after: Optional[float] = None  # the bank's new repayment after refixing, if you know it
+    kind: str = "home"  # home | car | personal | other
+    frequency: str = "monthly"  # weekly | fortnightly | monthly
+    repay_date: Optional[Date] = None  # any one repayment date, to set weekly or fortnightly repayments by
+    repayment: Optional[float] = None  # the repayment you make, if you'd rather say than have Payday work it out
+    term_months: Optional[int] = None  # the term in months, for loans that aren't whole years; beats term_years
+    early_fee: float = 0  # what the lender charges for paying off early, used in the what-ifs
+    count_asset: bool = True  # count what it bought (its values below) in net worth
+    depreciation: Optional[float] = None  # % a year it loses in value, for a car; None keeps the last value
+    bill_id: Optional[int] = None  # the bill its repayments are matched to, so they're set aside
 
 
 class LoanRate(SQLModel, table=True):
@@ -395,6 +405,7 @@ class LoanEntry(SQLModel, table=True):
 
 
 class PropertyValue(SQLModel, table=True):
+    """What a loan's home or car was worth on a date: a valuation, or for a car a resale estimate."""
     id: Optional[int] = Field(default=None, primary_key=True)
     loan_id: int = Field(index=True)
     date: Date
@@ -457,6 +468,10 @@ NEW_COLUMNS = {  # added to profile databases after the first release
                 ("bank_status", "VARCHAR NOT NULL DEFAULT ''"), ("refreshed_txns", "VARCHAR NOT NULL DEFAULT ''"),
                 ("refreshed_balance", "VARCHAR NOT NULL DEFAULT ''")],
     "bill": [("account_id", "VARCHAR")],
+    "loan": [("kind", "VARCHAR NOT NULL DEFAULT 'home'"), ("frequency", "VARCHAR NOT NULL DEFAULT 'monthly'"),
+             ("repay_date", "DATE"), ("repayment", "FLOAT"), ("term_months", "INTEGER"),
+             ("early_fee", "FLOAT NOT NULL DEFAULT 0"), ("count_asset", "BOOLEAN NOT NULL DEFAULT 1"),
+             ("depreciation", "FLOAT"), ("bill_id", "INTEGER")],
     "category": [("limit_mode", "VARCHAR NOT NULL DEFAULT 'auto'"), ("limit_amount", "FLOAT")],
     "rule": [("direction", "VARCHAR NOT NULL DEFAULT 'any'"), ("min_amount", "FLOAT"),
              ("max_amount", "FLOAT"), ("account_id", "VARCHAR")],

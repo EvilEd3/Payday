@@ -2024,7 +2024,7 @@ def goal_delete(goal_id: int, s: Session = Depends(session)):
     return back("/goals")
 
 
-# ---------- Mortgage ----------
+# ---------- Loans (a mortgage, a car loan, ...) ----------
 def the_loan(s: Session) -> Loan | None:
     return s.exec(select(Loan).order_by(Loan.id)).first()
 
@@ -2053,12 +2053,45 @@ def _day(v: str) -> date | None:
         return None
 
 
-@app.get("/mortgage")
-def mortgage_page(request: Request, extra: str = "", lump: str = "", lump_date: str = "", refix: str = "",
-                  s: Session = Depends(session)):
-    loan = the_loan(s)
+def _months(d: date | None) -> int | None:
+    return d.year * 12 + d.month if d else None
+
+
+@app.get("/loans")
+def loans_page(request: Request, s: Session = Depends(session)):
+    loans = s.exec(select(Loan).order_by(Loan.id)).all()
+    rows = []
+    for loan in loans:
+        m = mortgage.summary(s, loan, today())
+        first = loan.original_amount or ((m["history"][0].balance + m["history"][0].principal) if m["history"] else m["owed"])
+        rows.append({"m": m, "first": first,
+                     "repaid_pct": max(0.0, min(1.0, (first - m["owed"]) / first)) if first else 0})
+    linked = {loan.account_id for loan in loans if loan.account_id}
+    spare = [a for a in s.exec(select(Account).where(Account.type == "LOAN").order_by(Account.name)) if a.id not in linked]
+    return templates.TemplateResponse(request, "loans.html", {
+        "rows": rows, "spare": spare, "kinds": mortgage.KINDS,
+        "owed": sum(r["m"]["owed"] for r in rows), "worth": sum(r["m"]["value"] for r in rows if r["m"]["has_asset"]),
+        "page": "loans"})
+
+
+@app.get("/loans/new")
+def loan_new(request: Request, kind: str = "car", account: str = "", s: Session = Depends(session)):
+    return _setup_page(request, s, None, kind, account)
+
+
+@app.get("/loans/account/{acc_id}")
+def loan_for_account(acc_id: str, s: Session = Depends(session)):
+    """From a loan account's page: its loan, or a new one set up with it."""
+    loan = s.exec(select(Loan).where(Loan.account_id == acc_id)).first()
+    return back(f"/loans/{loan.id}" if loan else f"/loans/new?account={quote(acc_id)}")
+
+
+@app.get("/loans/{loan_id}")
+def loan_page(request: Request, loan_id: int, extra: str = "", lump: str = "", lump_date: str = "", refix: str = "",
+              s: Session = Depends(session)):
+    loan = s.get(Loan, loan_id)
     if not loan:
-        return back("/mortgage/setup")
+        return back("/loans")
     what = mortgage.WhatIf(extra=abs(_float(extra) or 0), lump=abs(_float(lump) or 0), lump_date=_day(lump_date),
                            refix_rate=_float(refix))
     if what.lump and not what.lump_date:
@@ -2077,152 +2110,275 @@ def mortgage_page(request: Request, extra: str = "", lump: str = "", lump_date: 
               {"name": "Forecast", "points": points(base.rows, anchor), "cls": "s-forecast", "dashed": True}]
     if alt:
         series.append({"name": "With your what-if", "points": points(alt.rows, anchor), "cls": "s-what"})
-    balance_chart = mortgage.line_chart(series, marker=today(), label="Mortgage balance over time")
+    balance_chart = mortgage.line_chart(series, marker=today(), label=f"{loan.name} balance over time")
 
-    value = m["value"]
-    vals = sorted((v.date, v.value) for v in m["values"]) or [(start, value)]
-    equity_series = [{"name": "Property value", "points": vals + [(base.payoff or m["maturity"], vals[-1][1])], "cls": "s-value"},
-                     {"name": "Owed", "points": [(start, first_balance)] + [(r.date, r.balance) for r in m["history"] + base.rows],
-                      "cls": "s-actual", "fill": True}]
-    equity_chart = mortgage.line_chart(equity_series, height=200, marker=today(), label="Property value and amount owed")
+    equity_chart = None
+    if m["has_asset"]:
+        end = base.payoff or m["maturity"]
+        vals = mortgage.asset_series(loan, m["asset_points"], end) or [(start, m["value"]), (end, m["value"])]
+        equity_series = [{"name": m["asset_name"], "points": vals, "cls": "s-value"},
+                         {"name": "Owed", "points": [(start, first_balance)] + [(r.date, r.balance) for r in m["history"] + base.rows],
+                          "cls": "s-actual", "fill": True}]
+        equity_chart = mortgage.line_chart(equity_series, height=200, marker=today(),
+                                           label=f"{m['asset_name']} value and amount owed")
     plan = alt or base
     paid = m["paid"]
-    first = m["loan"].original_amount or first_balance
+    first = loan.original_amount or first_balance
     cost = donut([("Principal", first), ("Interest paid", paid["interest"]), ("Interest to come", base.interest)])
     compare = None
     if alt:
-        def months(d):
-            return d.year * 12 + d.month if d else None
-        sooner = (months(base.payoff) - months(alt.payoff)) if base.payoff and alt.payoff else None
-        compare = {"sooner": sooner, "saved": base.interest - alt.interest,
-                   "extra_paid": sum(r.extra for r in alt.rows) + what.lump}
+        sooner = (_months(base.payoff) - _months(alt.payoff)) if base.payoff and alt.payoff else None
+        days = (base.payoff - alt.payoff).days if base.payoff and alt.payoff else None
+        saved = base.interest - alt.interest
+        fee = loan.early_fee if (what.extra or what.lump) and loan.early_fee else 0.0
+        compare = {"sooner": sooner, "weeks": round(days / 7) if days else 0, "saved": saved, "fee": fee,
+                   "net": saved - fee, "extra_paid": sum(r.extra for r in alt.rows) + what.lump}
+
+    paid_from = mortgage.paid_from(s, loan)
+    bill, bill_linked = mortgage.repayment_bill(s, loan, paid_from)
+    bills = s.exec(select(Bill).where(Bill.active == True).order_by(Bill.name)).all()  # noqa: E712
+    bills.sort(key=lambda b: abs(b.amount - m["payment"]))  # closest to the repayment first
     return templates.TemplateResponse(request, "mortgage.html", {
         "cost": cost, "compare": compare, "first": first,
-        "left_months": (base.payoff.year * 12 + base.payoff.month - today().year * 12 - today().month) if base.payoff else None,
+        "left_months": (_months(base.payoff) - _months(today())) if base.payoff else None,
         "repaid_pct": max(0.0, min(1.0, (first - m["owed"]) / first)) if first else 0,
         "m": m, "balance_chart": balance_chart, "equity_chart": equity_chart,
         "split_chart": mortgage.yearly_split(m["history"] + base.rows, today()),
         "upcoming": base.rows[:12], "plan": plan, "today": today(),
         "pay_account": s.get(Account, loan.pay_account_id) if loan.pay_account_id else None,
+        "bill": bill, "bill_linked": bill_linked, "bills": bills, "paid_from": paid_from[0] if paid_from else None,
+        "bill_msg": request.query_params.get("bill", ""),
         "form": {"extra": extra, "lump": lump, "lump_date": lump_date, "refix": refix},
-        "page": "mortgage"})
+        "page": "loans"})
 
 
-@app.get("/mortgage/setup")
-def mortgage_setup(request: Request, s: Session = Depends(session)):
-    loan = the_loan(s)
+def _setup_page(request: Request, s: Session, loan: Loan | None, kind: str = "home", account: str = ""):
     accounts = s.exec(select(Account).order_by(Account.name)).all()
-    entries = s.exec(select(LoanEntry).where(LoanEntry.loan_id == loan.id).order_by(LoanEntry.date)).all() if loan else []
+    lid = loan.id if loan else None
+    rates = s.exec(select(LoanRate).where(LoanRate.loan_id == lid).order_by(LoanRate.effective)).all() if loan else []
+    m = mortgage.summary(s, loan, today()) if loan else None
     return templates.TemplateResponse(request, "mortgage_setup.html", {
-        "loan": loan, "accounts": accounts, "entries": entries,
-        "rates": s.exec(select(LoanRate).where(LoanRate.loan_id == loan.id).order_by(LoanRate.effective)).all() if loan else [],
-        "values": s.exec(select(PropertyValue).where(PropertyValue.loan_id == loan.id).order_by(PropertyValue.date)).all() if loan else [],
+        "loan": loan, "kind": loan.kind if loan else (kind if kind in mortgage.KINDS else "home"),
+        "kinds": mortgage.KINDS, "accounts": accounts, "new_account": account,
+        "entries": s.exec(select(LoanEntry).where(LoanEntry.loan_id == lid).order_by(LoanEntry.date)).all() if loan else [],
+        "rates": rates, "rate_now": m["rate_now"] if m and rates else None,
+        "values": s.exec(select(PropertyValue).where(PropertyValue.loan_id == lid).order_by(PropertyValue.date)).all() if loan else [],
         "meta": mortgage.loan_meta(s.get(Account, loan.account_id)) if loan and loan.account_id else {},
-        "msg": request.query_params.get("msg", ""), "count": request.query_params.get("n", ""), "page": "mortgage"})
+        "default_dep": mortgage.DEFAULT_DEPRECIATION,
+        "msg": request.query_params.get("msg", ""), "count": request.query_params.get("n", ""), "page": "loans"})
 
 
-def _loan(s: Session) -> Loan:
-    loan = the_loan(s)
+@app.get("/loans/{loan_id}/setup")
+def loan_setup(request: Request, loan_id: int, s: Session = Depends(session)):
+    loan = s.get(Loan, loan_id)
     if not loan:
-        loan = Loan()
-        s.add(loan)
-        s.commit()
-        s.refresh(loan)
-    return loan
+        return back("/loans")
+    return _setup_page(request, s, loan)
 
 
-@app.post("/mortgage/setup")
-def mortgage_save(name: str = Form("Mortgage"), account_id: str = Form(""), pay_account_id: str = Form(""),
-                  leave_out: bool = Form(False), original_amount: str = Form(""), start_date: str = Form(""),
-                  term_years: int = Form(30), deposit: str = Form(""), payment_day: int = Form(20),
-                  fixed_until: str = Form(""), rate_after: str = Form(""), payment_after: str = Form(""),
-                  s: Session = Depends(session)):
-    loan = _loan(s)
-    loan.name = " ".join(name.split())[:60] or "Mortgage"
-    loan.account_id = account_id if account_id and s.get(Account, account_id) else None
-    loan.pay_account_id = pay_account_id if pay_account_id and s.get(Account, pay_account_id) else None
-    loan.original_amount = abs(_float(original_amount) or loan.original_amount or 0)
-    loan.start_date = _day(start_date) or loan.start_date
-    loan.term_years = min(max(term_years, 1), 50)
-    loan.deposit = abs(_float(deposit) or 0)
-    loan.payment_day = min(max(payment_day, 1), 31)
-    loan.fixed_until = _day(fixed_until)
-    loan.rate_after = _float(rate_after)
-    loan.payment_after = abs(_float(payment_after)) if _float(payment_after) else None
+def _save_loan(s: Session, loan: Loan, f: dict) -> None:
+    kind = f["kind"] if f["kind"] in mortgage.KINDS else "home"
+    loan.kind = kind
+    loan.name = " ".join(f["name"].split())[:60] or mortgage.KINDS[kind]
+    loan.account_id = f["account_id"] if f["account_id"] and s.get(Account, f["account_id"]) else None
+    loan.pay_account_id = f["pay_account_id"] if f["pay_account_id"] and s.get(Account, f["pay_account_id"]) else None
+    loan.original_amount = abs(_float(f["original_amount"]) or loan.original_amount or 0)
+    loan.start_date = _day(f["start_date"]) or loan.start_date
+    term = _float(f["term"])
+    if term and f["term_unit"] == "months":
+        loan.term_months = min(max(int(term), 1), 600)
+        loan.term_years = max(1, round(loan.term_months / 12))
+    elif term:
+        loan.term_years, loan.term_months = min(max(int(term), 1), 50), None
+    loan.deposit = abs(_float(f["deposit"]) or 0)
+    loan.frequency = f["frequency"] if f["frequency"] in mortgage.FREQUENCIES else "monthly"
+    loan.payment_day = min(max(int(_float(f["payment_day"]) or loan.payment_day or 20), 1), 31)
+    loan.repay_date = _day(f["repay_date"])
+    pay = _float(f["repayment"])
+    loan.repayment = abs(pay) if pay else None
+    loan.early_fee = abs(_float(f["early_fee"]) or 0)
+    loan.fixed_until = _day(f["fixed_until"])
+    loan.rate_after = _float(f["rate_after"])
+    loan.payment_after = abs(_float(f["payment_after"])) if _float(f["payment_after"]) else None
+    loan.count_asset = kind != "personal" and f["count_asset"]
+    dep = _float(f["depreciation"])
+    loan.depreciation = min(max(dep, 0), 90) if dep is not None else None
     s.add(loan)
+    s.commit()
+    s.refresh(loan)
+    rate = _float(f["rate"])
+    if rate is not None and 0 <= rate < 40:  # the rate now: start the history with it, or add it if it's changed
+        have = sorted((r.effective, r.rate) for r in s.exec(select(LoanRate).where(LoanRate.loan_id == loan.id)))
+        if not have:
+            s.add(LoanRate(loan_id=loan.id, effective=loan.start_date or today(), rate=rate, note="When set up"))
+        elif abs(mortgage.rate_on(have, today()) - rate) > 1e-6:
+            s.add(LoanRate(loan_id=loan.id, effective=today(), rate=rate, note="Changed in setup"))
     changed = False
-    for acc_id in {loan.account_id, loan.pay_account_id if leave_out else None} - {None}:
+    for acc_id in {loan.account_id if f["leave_out"] else None, loan.pay_account_id if f["leave_out_pay"] else None} - {None}:
         acc = s.get(Account, acc_id)
-        if acc.in_budget or acc.count_spending:  # the mortgage looks after itself: keep it out of the budget
+        if acc.in_budget or acc.count_spending:  # the loan looks after itself: keep it out of the budget
             acc.in_budget = acc.count_spending = False
             s.add(acc)
             changed = True
     s.commit()
     if changed:
         recategorise_all(s)
-    return back("/mortgage/setup?msg=saved")
 
 
-@app.post("/mortgage/import")
-async def mortgage_import(file: UploadFile, s: Session = Depends(session)):
+async def _loan_form(request: Request) -> dict:
+    form = await request.form()
+    keys = ("kind", "name", "account_id", "pay_account_id", "original_amount", "start_date", "term", "term_unit",
+            "deposit", "frequency", "payment_day", "repay_date", "repayment", "early_fee", "rate", "fixed_until",
+            "rate_after", "payment_after", "depreciation")
+    f = {k: str(form.get(k) or "") for k in keys}
+    for k in ("leave_out", "leave_out_pay", "count_asset"):
+        f[k] = form.get(k) == "true"
+    return f
+
+
+@app.post("/loans/new")
+async def loan_create(request: Request, s: Session = Depends(session)):
+    loan = Loan()
+    _save_loan(s, loan, await _loan_form(request))
+    return back(f"/loans/{loan.id}")
+
+
+@app.post("/loans/{loan_id}/setup")
+async def loan_save(request: Request, loan_id: int, s: Session = Depends(session)):
+    loan = s.get(Loan, loan_id)
+    if not loan:
+        return back("/loans")
+    _save_loan(s, loan, await _loan_form(request))
+    return back(f"/loans/{loan.id}/setup?msg=saved")
+
+
+@app.post("/loans/{loan_id}/delete")
+def loan_delete(loan_id: int, s: Session = Depends(session)):
+    loan = s.get(Loan, loan_id)
+    if loan:
+        for model in (LoanEntry, LoanRate, PropertyValue):
+            for row in s.exec(select(model).where(model.loan_id == loan_id)):
+                s.delete(row)
+        s.delete(loan)
+        s.commit()
+    return back("/loans")
+
+
+@app.post("/loans/{loan_id}/import")
+async def loan_import(loan_id: int, file: UploadFile, s: Session = Depends(session)):
+    loan = s.get(Loan, loan_id)
+    if not loan:
+        return back("/loans")
     raw = await file.read(2_000_000)
     try:
         parsed = mortgage.parse_tracker(raw.decode("utf-8-sig", errors="replace"))
     except Exception:  # noqa: BLE001 - any unreadable file gets the same message
         parsed = {"entries": []}
     if not parsed.get("entries"):
-        return back("/mortgage/setup?msg=badimport")
-    n = mortgage.import_tracker(s, _loan(s), parsed)
-    return back(f"/mortgage/setup?msg=imported&n={n}")
+        return back(f"/loans/{loan_id}/setup?msg=badimport")
+    n = mortgage.import_tracker(s, loan, parsed)
+    return back(f"/loans/{loan_id}/setup?msg=imported&n={n}")
 
 
-@app.post("/mortgage/rates")
-def mortgage_add_rate(effective: str = Form(...), rate: str = Form(...), note: str = Form(""),
-                      s: Session = Depends(session)):
-    loan, d, r = _loan(s), _day(effective), _float(rate)
-    if not d or r is None or not 0 <= r < 30:
-        return back("/mortgage/setup?msg=badrate#rates")
+@app.post("/loans/{loan_id}/rates")
+def loan_add_rate(loan_id: int, effective: str = Form(...), rate: str = Form(...), note: str = Form(""),
+                  s: Session = Depends(session)):
+    loan, d, r = s.get(Loan, loan_id), _day(effective), _float(rate)
+    if not loan:
+        return back("/loans")
+    if not d or r is None or not 0 <= r < 40:
+        return back(f"/loans/{loan_id}/setup?msg=badrate#rates")
     s.add(LoanRate(loan_id=loan.id, effective=d, rate=r, note=note.strip()[:80]))
     s.commit()
-    return back("/mortgage/setup?msg=saved#rates")
+    return back(f"/loans/{loan_id}/setup?msg=saved#rates")
 
 
-@app.post("/mortgage/rates/{rate_id}/delete")
-def mortgage_delete_rate(rate_id: int, s: Session = Depends(session)):
+@app.post("/loans/{loan_id}/rates/{rate_id}/delete")
+def loan_delete_rate(loan_id: int, rate_id: int, s: Session = Depends(session)):
     r = s.get(LoanRate, rate_id)
-    if r:
+    if r and r.loan_id == loan_id:
         s.delete(r)
         s.commit()
-    return back("/mortgage/setup?msg=deleted#rates")
+    return back(f"/loans/{loan_id}/setup?msg=deleted#rates")
 
 
-@app.post("/mortgage/values")
-def mortgage_add_value(when: str = Form(...), value: str = Form(...), note: str = Form(""),
-                       next: str = Form("/mortgage/setup"), s: Session = Depends(session)):
-    loan, d, v = _loan(s), _day(when), _float(value)
+@app.post("/loans/{loan_id}/values")
+def loan_add_value(loan_id: int, when: str = Form(...), value: str = Form(...), note: str = Form(""),
+                   next: str = Form(""), s: Session = Depends(session)):
+    loan, d, v = s.get(Loan, loan_id), _day(when), _float(value)
+    if not loan:
+        return back("/loans")
     if not d or not v or v <= 0:
-        return back("/mortgage/setup?msg=badvalue#values")
+        return back(f"/loans/{loan_id}/setup?msg=badvalue#values")
     s.add(PropertyValue(loan_id=loan.id, date=d, value=v, note=note.strip()[:80]))
     s.commit()
-    return back(_safe_next(next) if next.startswith("/mortgage") else "/mortgage/setup")
+    return back(_safe_next(next) if next.startswith(f"/loans/{loan_id}") else f"/loans/{loan_id}/setup?msg=saved#values")
 
 
-@app.post("/mortgage/values/{value_id}/delete")
-def mortgage_delete_value(value_id: int, s: Session = Depends(session)):
+@app.post("/loans/{loan_id}/values/{value_id}/delete")
+def loan_delete_value(loan_id: int, value_id: int, s: Session = Depends(session)):
     v = s.get(PropertyValue, value_id)
-    if v:
+    if v and v.loan_id == loan_id:
         s.delete(v)
         s.commit()
-    return back("/mortgage/setup?msg=deleted#values")
+    return back(f"/loans/{loan_id}/setup?msg=deleted#values")
 
 
-@app.post("/mortgage/history/clear")
-def mortgage_clear_history(s: Session = Depends(session)):
-    loan = _loan(s)
-    for e in s.exec(select(LoanEntry).where(LoanEntry.loan_id == loan.id, LoanEntry.source == "import")):
+@app.post("/loans/{loan_id}/history/clear")
+def loan_clear_history(loan_id: int, s: Session = Depends(session)):
+    for e in s.exec(select(LoanEntry).where(LoanEntry.loan_id == loan_id, LoanEntry.source == "import")):
         s.delete(e)
     s.commit()
-    return back("/mortgage/setup?msg=cleared")
+    return back(f"/loans/{loan_id}/setup?msg=cleared")
+
+
+@app.post("/loans/{loan_id}/bill")
+def loan_bill(loan_id: int, bill_id: str = Form(""), s: Session = Depends(session)):
+    """Link the loan to a bill you already have (bill_id), stop linking it ("none"), or add one from its repayments."""
+    loan = s.get(Loan, loan_id)
+    if not loan:
+        return back("/loans")
+    if bill_id == "none":
+        loan.bill_id = None
+        s.add(loan)
+        s.commit()
+        return back(f"/loans/{loan_id}?bill=unlinked#setaside")
+    if bill_id.isdigit() and s.get(Bill, int(bill_id)):
+        loan.bill_id = int(bill_id)
+        s.add(loan)
+        s.commit()
+        return back(f"/loans/{loan_id}?bill=linked#setaside")
+    existing, _ = mortgage.repayment_bill(s, loan)
+    paid = mortgage.paid_from(s, loan)
+    if existing or not paid:  # never make a second bill; with nothing to match on, set one up by hand
+        return back(f"/loans/{loan_id}?bill=none#setaside")
+    m = mortgage.summary(s, loan, today())
+    cat = get_or_create_category(s, "Loan repayments")
+    first_due = m["next"].date if m["next"] else today()
+    bill = mortgage.bill_from_repayments(loan, m["payment"], first_due, paid[0], cat.id)
+    if not valid_pattern(bill.match_pattern):
+        return back(f"/loans/{loan_id}?bill=none#setaside")
+    s.add(bill)
+    s.commit()
+    s.refresh(bill)
+    loan.bill_id = bill.id
+    s.add(loan)
+    s.commit()
+    recategorise_all(s)  # match past repayments to the new bill
+    return back(f"/loans/{loan_id}?bill=added#setaside")
+
+
+# the Mortgage page's old addresses, for bookmarks
+@app.get("/mortgage")
+def mortgage_page(s: Session = Depends(session)):
+    loan = s.exec(select(Loan).where(Loan.kind == "home").order_by(Loan.id)).first() or the_loan(s)
+    return back(f"/loans/{loan.id}" if loan else "/loans")
+
+
+@app.get("/mortgage/setup")
+def mortgage_setup(s: Session = Depends(session)):
+    loan = s.exec(select(Loan).where(Loan.kind == "home").order_by(Loan.id)).first()
+    return back(f"/loans/{loan.id}/setup" if loan else "/loans/new?kind=home")
 
 
 # ---------- Settings ----------

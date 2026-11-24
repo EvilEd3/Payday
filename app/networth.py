@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 
 from .db import Account, BalanceSnapshot, Loan, LoanEntry, PropertyValue, Transaction
 from .forecast import OWED_TYPES, account_balance, bank_balance
+from .mortgage import ASSETS, asset_points, value_on
 
 
 def snapshot(s: Session, today: date) -> None:
@@ -60,19 +61,27 @@ def build(s: Session, today: date, months: int = 12) -> dict:
             return own[i - 1][1]
         return now[acc.id] - sum(a for when, a in moved.get(acc.id, []) if when > d)
 
-    # a home and a mortgage tracked on the Mortgage page, if there is one
-    loan = s.exec(select(Loan).order_by(Loan.id)).first()
-    values = sorted((v.date, v.value) for v in s.exec(select(PropertyValue))) if loan else []
-    entries = sorted((e.date, e.balance) for e in s.exec(select(LoanEntry))) if loan else []
-    loan_in_accounts = bool(loan and loan.account_id and any(a.id == loan.account_id for a in accounts))
+    # loans tracked on the Loans page: what each bought (a home, a car), and what's owed if the bank account isn't linked
+    by_loan_values: dict[int, list] = defaultdict(list)
+    for v in s.exec(select(PropertyValue)):
+        by_loan_values[v.loan_id].append(v)
+    by_loan_entries: dict[int, list] = defaultdict(list)
+    for e in s.exec(select(LoanEntry)):
+        by_loan_entries[e.loan_id].append((e.date, e.balance))
+    account_ids = {a.id for a in accounts}
+    loans = []
+    for loan in s.exec(select(Loan).order_by(Loan.id)):
+        loans.append({"loan": loan, "points": asset_points(loan, by_loan_values[loan.id]),
+                      "entries": sorted(by_loan_entries[loan.id]),
+                      "linked": bool(loan.account_id and loan.account_id in account_ids)})
 
-    def home_on(d: date) -> float | None:
-        i = bisect_right([v[0] for v in values], d)
-        return values[i - 1][1] if i else None
+    def asset_on(item: dict, d: date) -> float | None:
+        return value_on(item["loan"], item["points"], d)
 
-    def mortgage_on(d: date) -> float | None:
-        if not loan or loan_in_accounts:
-            return None
+    def owed_on(item: dict, d: date) -> float | None:
+        loan, entries = item["loan"], item["entries"]
+        if item["linked"]:
+            return None  # the loan account is counted with the other accounts
         i = bisect_right([e[0] for e in entries], d)
         if i:
             return entries[i - 1][1]
@@ -80,18 +89,25 @@ def build(s: Session, today: date, months: int = 12) -> dict:
 
     def total_on(d: date) -> float:
         total = sum(balance_on(a, d) for a in accounts)
-        return total + (home_on(d) or 0) - (mortgage_on(d) or 0)
+        return total + sum((asset_on(i, d) or 0) - (owed_on(i, d) or 0) for i in loans)
 
     assets, debts = [], []
     for a in accounts:
         row = {"name": a.name, "detail": a.institution, "amount": now[a.id], "href": f"/accounts/{a.id}"}
         (debts if a.type in OWED_TYPES or now[a.id] < 0 else assets).append(row)
-    if home_on(today) is not None:
-        assets.append({"name": "Home", "detail": "Latest value on the Mortgage page", "amount": home_on(today),
-                       "href": "/mortgage"})
-    if mortgage_on(today) is not None:
-        debts.append({"name": loan.name or "Mortgage", "detail": "From the Mortgage page",
-                      "amount": -mortgage_on(today), "href": "/mortgage"})
+    for item in loans:
+        loan = item["loan"]
+        worth, owed = asset_on(item, today), owed_on(item, today)
+        if worth is not None:
+            name = ASSETS.get(loan.kind, "What it bought")
+            many = sum(1 for i in loans if i["loan"].kind == loan.kind and i["points"]) > 1
+            assets.append({"name": f"{name} ({loan.name})" if many else name,
+                           "detail": "Latest value on the Loans page" if loan.kind == "home"
+                           else "Resale estimate on the Loans page",
+                           "amount": worth, "href": f"/loans/{loan.id}"})
+        if owed is not None:
+            debts.append({"name": loan.name or "Loan", "detail": "From the Loans page", "amount": -owed,
+                          "href": f"/loans/{loan.id}"})
     assets.sort(key=lambda r: -r["amount"])
     debts.sort(key=lambda r: r["amount"])
     history = [{"date": d, "total": total_on(d)} for d in points]

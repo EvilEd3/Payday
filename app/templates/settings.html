@@ -106,7 +106,7 @@
 
 {% elif tab == 'accounts' %}
 <p class="lede"><strong>Balance counts</strong>: its balance is money you can spend. <strong>Budget counts</strong>: its income and spending are part of your budget.</p>
-{% if accounts|selectattr('type', 'equalto', 'LOAN')|list or has_loan() %}<a class="notice" href="{{ '/mortgage' if has_loan() else '/mortgage/setup' }}" style="text-decoration:none"><span><strong>{{ 'Your mortgage' if has_loan() else 'Got a mortgage?' }}</strong> {{ 'Balance, forecasts and what-ifs.' if has_loan() else 'Set it up to see the balance, forecasts, equity and what-ifs, and load your repayments so far.' }}</span><span class="btn quiet small">{{ 'Open' if has_loan() else 'Set up' }}</span></a>{% endif %}
+{% if accounts|selectattr('type', 'equalto', 'LOAN')|list or has_loan() %}<a class="notice" href="/loans" style="text-decoration:none"><span><strong>{{ 'Your loans' if has_loan() else 'Got a loan?' }}</strong> {{ 'Balances, payoff dates, interest and what-ifs.' if has_loan() else 'Set up a mortgage, car loan or personal loan to see its payoff date, interest and what-ifs, and count what it bought in net worth.' }}</span><span class="btn quiet small">{{ 'Open' if has_loan() else 'Set up' }}</span></a>{% endif %}
 <div class="list">
   {% for a in accounts %}
   <form method="post" action="/accounts/{{ a.id }}" class="row" style="align-items:flex-start">

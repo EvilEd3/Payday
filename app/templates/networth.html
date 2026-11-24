@@ -60,6 +60,6 @@
   {% endfor %}
 </div>
 {% if not n.assets|selectattr('name', 'equalto', 'Home')|list %}
-<p class="muted small">Own a home? Add it on the <a href="/mortgage">Mortgage</a> page with its value, and it’s counted here.</p>
+<p class="muted small">Own a home or a car with a loan? Add it on the <a href="/loans">Loans</a> page with its value, and it’s counted here.</p>
 {% endif %}
 {% endblock %}

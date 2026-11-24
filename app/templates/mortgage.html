@@ -3,16 +3,18 @@
 {% block content %}
 {% set loan = m.loan %}
 {% set nx = m.next %}
+{% set home = loan.kind == 'home' %}
+<p class="small"><a href="/loans">Loans</a></p>
 <div class="pagehead">
   <div>
     <h1>{{ loan.name }}</h1>
-    <p class="sub">{% if m.account %}<a href="/accounts/{{ m.account.id }}">{{ m.account.name }}</a>, {% endif %}{{ '%.2f'|format(m.rate_now) }}% p.a.{% if m.fixed_until %}, fixed until {{ m.fixed_until|dmy }}{% endif %}. Repaid on the {{ loan.payment_day }}{{ 'st' if loan.payment_day in (1,21,31) else 'nd' if loan.payment_day in (2,22) else 'rd' if loan.payment_day in (3,23) else 'th' }} of each month.</p>
+    <p class="sub">{% if m.account %}<a href="/accounts/{{ m.account.id }}">{{ m.account.name }}</a>, {% endif %}{% if loan.name|lower != m.kind_name|lower %}{{ m.kind_name|lower }}, {% endif %}{{ '%.2f'|format(m.rate_now) }}% a year{% if m.fixed_until %}, fixed until {{ m.fixed_until|dmy }}{% endif %}. {{ m.schedule }}.</p>
   </div>
-  <a class="btn quiet small admin-only" href="/mortgage/setup">Mortgage setup</a>
+  <a class="btn quiet small admin-only" href="/loans/{{ loan.id }}/setup">Loan setup</a>
 </div>
 
 {% if m.fixed_until and loan.rate_after is none and m.refix_days is not none %}
-<a class="notice admin-only" href="/mortgage/setup#refix" style="text-decoration:none"><span><strong>Your fixed rate ends in {{ m.refix_days }} days.</strong> The forecast assumes {{ '%.2f'|format(m.rate_now) }}% after that. Enter the rate you expect for a truer picture, or try one below.</span><span class="btn quiet small">Set it</span></a>
+<a class="notice admin-only" href="/loans/{{ loan.id }}/setup#refix" style="text-decoration:none"><span><strong>Your fixed rate ends in {{ m.refix_days }} days.</strong> The forecast assumes {{ '%.2f'|format(m.rate_now) }}% after that. Enter the rate you expect for a truer picture, or try one below.</span><span class="btn quiet small">Set it</span></a>
 {% endif %}
 
 <section class="mhero panel">
@@ -26,20 +28,25 @@
     <span class="small"><strong>{{ (repaid_pct * 100)|round(2) }}%</strong> of {{ first|dollars }} repaid</span>
   </div>
   <div class="mh-free">
-    <span class="mh-label">Mortgage-free</span>
+    <span class="mh-label">{{ 'Mortgage-free' if home else 'Paid off' }}</span>
     <b>{{ m.base.payoff|my }}</b>
     <span class="muted small">{% if left_months is not none %}{{ left_months|yrsmths }} to go, if you keep paying {{ m.payment|money }}{% else %}Repayments don’t cover the interest{% endif %}</span>
   </div>
 </section>
 
 <div class="kpis" style="margin-top:.6rem">
+  {% if m.has_asset and home %}
   <div class="kpi"><b>{{ m.equity|dollars }}</b><span>Equity, {{ (m.equity_pct * 100)|round(1) }}% of {{ m.value|dollars }}</span></div>
   <div class="kpi"><b class="{{ 'due' if m.lvr > 0.8 }}">{{ (m.lvr * 100)|round(1) }}%</b><span>Loan to value{% if m.lvr > 0.8 %}. Banks look for 80% or less{% endif %}</span></div>
+  {% elif m.has_asset %}
+  <div class="kpi"><b>{{ m.value|dollars }}</b><span>{{ m.asset_name }} worth about{% if m.depreciation %}, losing {{ m.depreciation|round(1) }}% a year{% endif %}</span></div>
+  <div class="kpi"><b class="{{ 'pos' if m.equity >= 0 else 'neg' }}">{{ m.equity|abs|dollars }}</b><span>{% if m.equity >= 0 %}Yours outright: what it’s worth less what you owe{% else %}More owed than it’s worth. Selling it wouldn’t clear the loan{% endif %}</span></div>
+  {% endif %}
   {% if nx %}<div class="kpi"><b>{{ nx.payment|money }}</b><span>Next repayment, {{ nx.date|nice }}: {{ nx.interest|dollars }} interest, {{ nx.principal|dollars }} off the loan</span></div>{% endif %}
   <div class="kpi"><b>{{ m.per_day|money }}</b><span>Interest a day at {{ '%.2f'|format(m.rate_now) }}%</span></div>
   <div class="kpi"><b>{{ m.paid.payments|dollars }}</b><span>Repaid so far: {{ m.paid.interest|dollars }} interest, {{ m.paid.principal|dollars }} principal</span></div>
   <div class="kpi"><b>{{ m.base.interest|dollars }}</b><span>Interest still to pay over the rest of the loan</span></div>
-  {% if m.refix_days is not none %}<div class="kpi"><b>{{ m.refix_days }} days</b><span>Until the fixed rate ends{% if m.base.payment_after_refix %}. Then about {{ m.base.payment_after_refix|money }} a month{% endif %}</span></div>{% endif %}
+  {% if m.refix_days is not none %}<div class="kpi"><b>{{ m.refix_days }} days</b><span>Until the fixed rate ends{% if m.base.payment_after_refix %}. Then about {{ m.base.payment_after_refix|money }} a {{ m.per }}{% endif %}</span></div>{% endif %}
   {% if pay_account and nx %}{% set cover = pay_account.balance_available if pay_account.balance_available is not none else pay_account.balance_current %}
   <a class="kpi" href="/accounts/{{ pay_account.id }}"><b class="{{ 'pos' if cover >= nx.payment else 'neg' }}">{{ cover|money }}</b><span>In {{ pay_account.name }}. {% if cover >= nx.payment %}Enough for the next repayment{% else %}{{ (nx.payment - cover)|money }} short of the next repayment{% endif %}</span></a>{% endif %}
 </div>
@@ -58,19 +65,20 @@
 <section class="section" id="whatif">
   <h2>What if…</h2>
   <div class="panel whatif" style="margin-top:.75rem">
-    <form method="get" action="/mortgage#whatif" class="wi-form">
-      <label>Extra each month <input name="extra" inputmode="decimal" value="{{ form.extra }}" placeholder="$200"></label>
+    <form method="get" action="/loans/{{ loan.id }}#whatif" class="wi-form">
+      <label>Extra each {{ m.per }} <input name="extra" inputmode="decimal" value="{{ form.extra }}" placeholder="$200"></label>
       <label>One-off lump sum <input name="lump" inputmode="decimal" value="{{ form.lump }}" placeholder="$10,000"></label>
       <label>Paid on <input type="date" name="lump_date" value="{{ form.lump_date }}" min="{{ today.isoformat() }}"></label>
-      <label>Rate after {{ m.fixed_until|my if m.fixed_until else 'refixing' }} <input name="refix" inputmode="decimal" value="{{ form.refix }}" placeholder="{{ '%.2f'|format(loan.rate_after if loan.rate_after is not none else m.rate_now) }}%"></label>
-      <div class="wi-go"><button>Work it out</button>{% if m.alt %}<a class="small" href="/mortgage#whatif">Clear</a>{% endif %}</div>
+      {% if home or m.fixed_until %}<label>Rate after {{ m.fixed_until|my if m.fixed_until else 'refixing' }} <input name="refix" inputmode="decimal" value="{{ form.refix }}" placeholder="{{ '%.2f'|format(loan.rate_after if loan.rate_after is not none else m.rate_now) }}%"></label>{% endif %}
+      <div class="wi-go"><button>Work it out</button>{% if m.alt %}<a class="small" href="/loans/{{ loan.id }}#whatif">Clear</a>{% endif %}</div>
     </form>
     {% if compare %}
     <div class="wi-result">
-      <div><b class="{{ 'pos' if (compare.sooner or 0) > 0 else 'neg' if (compare.sooner or 0) < 0 }}">{% if compare.sooner %}{{ compare.sooner|abs|yrsmths }} {{ 'sooner' if compare.sooner > 0 else 'later' }}{% else %}Same month{% endif %}</b><span>Mortgage-free {{ m.alt.payoff|my }} instead of {{ m.base.payoff|my }}</span></div>
+      <div><b class="{{ 'pos' if (compare.sooner or 0) > 0 else 'neg' if (compare.sooner or 0) < 0 }}">{% if compare.sooner %}{{ compare.sooner|abs|yrsmths }} {{ 'sooner' if compare.sooner > 0 else 'later' }}{% elif compare.weeks %}{{ compare.weeks|abs }} week{{ 's' if compare.weeks|abs != 1 }} {{ 'sooner' if compare.weeks > 0 else 'later' }}{% else %}Same month{% endif %}</b><span>{{ 'Mortgage-free' if home else 'Paid off' }} {{ m.alt.payoff|my if compare.sooner else m.alt.payoff|dmy }} instead of {{ m.base.payoff|my if compare.sooner else m.base.payoff|dmy }}</span></div>
       <div><b class="{{ 'pos' if compare.saved > 0 else 'neg' }}">{{ compare.saved|abs|dollars }}</b><span>Interest {{ 'saved' if compare.saved >= 0 else 'added' }}</span></div>
+      {% if compare.fee %}<div><b class="{{ 'pos' if compare.net > 0 else 'neg' }}">{{ compare.net|abs|dollars }}</b><span>{{ 'Saved' if compare.net > 0 else 'Lost' }} after the {{ compare.fee|dollars }} early repayment fee</span></div>{% endif %}
       {% if compare.extra_paid %}<div><b>{{ compare.extra_paid|dollars }}</b><span>Extra you’d pay in, so each extra dollar saves ${{ '%.2f'|format(compare.saved / compare.extra_paid) }} in interest</span></div>{% endif %}
-      {% if m.alt.payment_after_refix %}<div><b>{{ m.alt.payment_after_refix|money }}</b><span>Repayment after refixing{% if m.base.payment_after_refix %}, {{ (m.alt.payment_after_refix - m.base.payment_after_refix)|money(True) }} a month{% endif %}</span></div>{% endif %}
+      {% if m.alt.payment_after_refix %}<div><b>{{ m.alt.payment_after_refix|money }}</b><span>Repayment after refixing{% if m.base.payment_after_refix %}, {{ (m.alt.payment_after_refix - m.base.payment_after_refix)|money(True) }} a {{ m.per }}{% endif %}</span></div>{% endif %}
     </div>
     {% else %}
     {% endif %}
@@ -99,18 +107,50 @@
 </section>
 </div>
 
+{% if m.has_asset or loan.count_asset and loan.kind != 'personal' %}
 <section class="section">
-  <h2>Property value and equity</h2>
+  <h2>{{ 'Property value and equity' if home else m.asset_name ~ ' value and what you owe' }}</h2>
   <div class="panel" style="margin-top:.75rem">
-    <ul class="keys"><li><i class="k-value"></i>Property value</li><li><i class="k-actual"></i>Owed</li><li class="muted">The gap between them is your equity</li></ul>
+    {% if equity_chart %}
+    <ul class="keys"><li><i class="k-value"></i>{{ 'Property value' if home else 'Resale estimate' }}</li><li><i class="k-actual"></i>Owed</li><li class="muted">{{ 'The gap between them is your equity' if home else 'Where the value is above what’s owed, that part is yours' }}</li></ul>
     {{ equity_chart }}
-    <form class="admin-only inline-add" method="post" action="/mortgage/values">
-      <input type="hidden" name="next" value="/mortgage">
+    {% if not home %}<p class="muted small" style="margin:.5rem 0 0">{% if m.depreciation %}Payday takes {{ m.depreciation|round(1) }}% a year off your latest estimate{% else %}Payday keeps your latest estimate until you add a new one{% endif %}{% if not m.values %}, starting from what you paid (the loan plus deposit) on {{ loan.start_date|dmy }}{% endif %}. Check a few listings for the same model and year, then add what it would sell for.</p>{% endif %}
+    {% else %}<p class="muted small" style="margin:0">Add what it’s worth, and it’s counted in your net worth.</p>{% endif %}
+    <form class="admin-only inline-add" method="post" action="/loans/{{ loan.id }}/values">
+      <input type="hidden" name="next" value="/loans/{{ loan.id }}">
       <label>Valued on <input type="date" name="when" value="{{ today.isoformat() }}" required></label>
-      <label>Value <input name="value" inputmode="decimal" placeholder="{{ m.value|round|int }}" required></label>
-      <label>Source <input name="note" placeholder="RV, bank valuation, appraisal"></label>
-      <button class="quiet">Add valuation</button>
+      <label>{{ 'Value' if home else 'Would sell for' }} <input name="value" inputmode="decimal" placeholder="{{ m.value|round|int if m.value else '' }}" required></label>
+      <label>Source <input name="note" placeholder="{{ 'RV, bank valuation, appraisal' if home else 'Trade Me listings, dealer offer' }}"></label>
+      <button class="quiet">{{ 'Add valuation' if home else 'Add estimate' }}</button>
     </form>
+  </div>
+</section>
+{% endif %}
+
+<section class="section" id="setaside">
+  <h2>Set aside for repayments</h2>
+  <div class="panel" style="margin-top:.75rem">
+    {% if bill_msg == 'added' %}<p class="flash" role="status">Added the bill. Your daily amount now holds back each repayment.</p>
+    {% elif bill_msg == 'linked' %}<p class="flash" role="status">Linked.</p>
+    {% elif bill_msg == 'none' %}<p class="flash bad" role="alert">Payday couldn’t find a repayment to copy. Add the bill on the <a href="/bills#add">Bills</a> page, then pick it here.</p>{% endif %}
+    {% if bill and bill_linked %}
+    <p style="margin:0">Repayments are matched to your bill <a href="/bills/{{ bill.id }}"><strong>{{ bill.name }}</strong></a>, {{ bill.amount|money }} {{ bill.frequency }}. Your daily amount holds back each one until it’s paid.</p>
+    {% if (bill.amount - m.payment)|abs > bill.amount * bill.tolerance_pct / 100 %}<p class="small due" style="margin:.5rem 0 0">The bill is {{ bill.amount|money }} but repayments are {{ m.payment|money }}. <a href="/bills/{{ bill.id }}#edit">Update the bill</a> so it keeps matching.</p>{% endif %}
+    <form class="admin-only" method="post" action="/loans/{{ loan.id }}/bill" style="margin-top:.5rem"><input type="hidden" name="bill_id" value="none"><button class="linkish small">Unlink the bill</button></form>
+    {% elif bill %}
+    <p style="margin:0">Your bill <a href="/bills/{{ bill.id }}"><strong>{{ bill.name }}</strong></a> ({{ bill.amount|money }} {{ bill.frequency }}) already matches these repayments, so they’re set aside.</p>
+    <form class="admin-only" method="post" action="/loans/{{ loan.id }}/bill" style="margin-top:.6rem"><input type="hidden" name="bill_id" value="{{ bill.id }}"><button class="quiet">Link this bill to the loan</button></form>
+    {% else %}
+    <p style="margin:0">Repayments aren’t set aside yet. {% if paid_from %}The last repayment, {{ paid_from.amount|abs|money }} on {{ paid_from.date|dmy }}, was counted as a transfer between your accounts, so your daily amount didn’t hold it back.{% else %}Add them as a bill and your daily amount holds back each one.{% endif %}</p>
+    <div class="admin-only row" style="gap:.75rem;flex-wrap:wrap;margin-top:.75rem;align-items:end">
+      {% if paid_from %}<form method="post" action="/loans/{{ loan.id }}/bill"><button>Add as a bill: {{ m.payment|money }} {{ loan.frequency }}</button></form>{% endif %}
+      {% if bills %}<form method="post" action="/loans/{{ loan.id }}/bill" class="row" style="gap:.5rem;align-items:end">
+        <label class="small">{{ 'Or use' if paid_from else 'Use' }} a bill you already have
+          <select name="bill_id">{% for b in bills %}<option value="{{ b.id }}">{{ b.name }}, {{ b.amount|money }} {{ b.frequency }}</option>{% endfor %}</select></label>
+        <button class="quiet">Link</button></form>{% endif %}
+      {% if not paid_from %}<a class="btn quiet" href="/bills#add">Add a bill</a>{% endif %}
+    </div>
+    {% endif %}
   </div>
 </section>
 
@@ -157,7 +197,7 @@
     <thead><tr><th>Date</th><th class="num opt">Repayment</th><th class="num">Interest</th><th class="num">Principal</th><th class="num">Owed after</th><th class="num opt">Rate</th></tr></thead>
     <tbody>
     {% for r in m.history|reverse %}<tr><td class="nowrap" data-sort="{{ r.date.isoformat() }}">{{ r.date|dmy }}</td><td class="num opt">{{ r.payment|money }}</td><td class="num">{{ r.interest|money }}</td><td class="num">{{ r.principal|money }}</td><td class="num">{{ r.balance|money }}</td><td class="num opt">{{ '%.2f'|format(r.rate) if r.rate is not none else '' }}%</td></tr>
-    {% else %}<tr><td colspan="6" class="empty">No repayments yet. Import your spreadsheet in <a href="/mortgage/setup">Mortgage setup</a>.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="6" class="empty">No repayments yet. They show here once the loan account is linked in <a href="/loans/{{ loan.id }}/setup">Loan setup</a>.</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

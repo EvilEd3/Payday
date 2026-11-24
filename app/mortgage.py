@@ -1,4 +1,4 @@
-"""Mortgage: history, forecast to payoff, what-ifs, milestones and charts.
+"""Loans (a mortgage, a car loan, a personal loan): history, forecast to payoff, what-ifs, milestones and charts.
 
 Interest is worked out the way NZ banks do it (and the way your spreadsheet does): daily, at the yearly rate ÷ 365,
 on the balance owed, added up between repayments. Where the rate changes mid-way, each day uses the rate in force.
@@ -17,7 +17,8 @@ from dateutil.relativedelta import relativedelta
 from markupsafe import Markup, escape
 from sqlmodel import Session, delete, select
 
-from .db import Account, Loan, LoanEntry, LoanRate, PropertyValue, Transaction
+from .bills import _clean_pattern as clean_pattern, bill_matches
+from .db import Account, Bill, Loan, LoanEntry, LoanRate, PropertyValue, Transaction
 
 
 # ---------------------------------------------------------------- the maths
@@ -42,12 +43,25 @@ def interest_between(balance: float, start: date, end: date, rates: list[tuple[d
     return total
 
 
-def table_payment(balance: float, rate: float, months: int) -> float:
-    """The standard monthly repayment that clears balance over months at rate % p.a."""
-    if months <= 0:
+FREQUENCIES = {"weekly": 52, "fortnightly": 26, "monthly": 12}  # repayments a year
+KINDS = {"home": "Home loan", "car": "Car loan", "personal": "Personal loan", "other": "Other loan"}
+ASSETS = {"home": "Home", "car": "Car", "other": "What it bought"}  # what each kind of loan pays for
+DEFAULT_DEPRECIATION = {"car": 15.0}  # % a year: a common rule of thumb for a used car
+
+
+def table_payment(balance: float, rate: float, periods: int, per_year: int = 12) -> float:
+    """The standard repayment that clears balance over `periods` repayments at rate % p.a."""
+    if periods <= 0:
         return balance
-    r = rate / 100 / 12
-    return balance / months if r == 0 else balance * r / (1 - (1 + r) ** -months)
+    r = rate / 100 / per_year
+    return balance / periods if r == 0 else balance * r / (1 - (1 + r) ** -periods)
+
+
+def periods_between(a: date, b: date, frequency: str = "monthly") -> int:
+    """Repayments left from a to b."""
+    if frequency == "monthly":
+        return months_between(a, b)
+    return max(math.ceil((b - a).days / (7 if frequency == "weekly" else 14)), 0)
 
 
 def months_between(a: date, b: date) -> int:
@@ -64,6 +78,18 @@ def payment_dates(after: date, day: int):
         if due > after:
             yield due
         d += relativedelta(months=1)
+
+
+def repayment_dates(after: date, frequency: str = "monthly", day: int = 20, anchor: date | None = None):
+    """Repayment dates strictly after `after`: monthly on `day`, or every week or fortnight from `anchor`."""
+    if frequency not in ("weekly", "fortnightly") or not anchor:
+        yield from payment_dates(after, day)
+        return
+    step = 7 if frequency == "weekly" else 14
+    due = anchor + timedelta(days=((after - anchor).days // step + 1) * step)
+    while True:
+        yield due
+        due += timedelta(days=step)
 
 
 @dataclass
@@ -89,13 +115,15 @@ class Plan:
 
 def project(balance: float, since: date, rates: list[tuple[date, float]], payment: float, day: int,
             maturity: date, fixed_until: date | None, rate_after: float | None, payment_after: float | None,
-            extra: float = 0.0, lump: float = 0.0, lump_date: date | None = None) -> Plan:
+            extra: float = 0.0, lump: float = 0.0, lump_date: date | None = None,
+            frequency: str = "monthly", anchor: date | None = None) -> Plan:
     """Repayments from the one after `since` until the loan is paid off."""
     rates = sorted(rates)
     if fixed_until and rate_after is not None:
         rates = [(d, r) for d, r in rates if d < fixed_until] + [(fixed_until, rate_after)]
     plan, prev, owed, refixed = Plan(), since, balance, False
-    for due in payment_dates(since, day):
+    per_year = FREQUENCIES.get(frequency, 12)
+    for due in repayment_dates(since, frequency, day, anchor):
         if owed <= 0.005 or due > maturity + relativedelta(years=10):
             break
         if lump and lump_date and prev < lump_date <= due:
@@ -104,7 +132,8 @@ def project(balance: float, since: date, rates: list[tuple[date, float]], paymen
         interest = round(raw, 2)
         if fixed_until and not refixed and due > fixed_until:
             refixed = True
-            payment = payment_after or table_payment(owed, rate_on(rates, due), months_between(due, maturity) + 1)
+            payment = payment_after or table_payment(owed, rate_on(rates, due), periods_between(due, maturity, frequency) + 1,
+                                                     per_year)
             plan.payment_after_refix = round(payment, 2)
         pay = round(payment + extra, 2)
         if owed + raw <= pay + 0.005:
@@ -173,6 +202,76 @@ class WhatIf:
         return bool(self.extra or self.lump or self.refix_rate is not None)
 
 
+def maturity_of(loan: Loan, meta: dict, today: date) -> date:
+    start = loan.start_date or today
+    if _d(meta.get("matures_at")):
+        return _d(meta.get("matures_at"))
+    if loan.term_months:
+        return start + relativedelta(months=loan.term_months)
+    return start + relativedelta(years=loan.term_years)
+
+
+def schedule_anchor(loan: Loan, repay_meta: dict, hist: list[Row]) -> date | None:
+    """A known repayment date, for weekly or fortnightly repayments: yours, the bank's next one, or the last seen."""
+    return loan.repay_date or _d(repay_meta.get("next_date")) or (hist[-1].date if hist else None) or loan.start_date
+
+
+def schedule_text(loan: Loan) -> str:
+    if loan.frequency == "weekly":
+        return "Repaid every week"
+    if loan.frequency == "fortnightly":
+        return "Repaid every fortnight"
+    d = loan.payment_day
+    suffix = "st" if d in (1, 21, 31) else "nd" if d in (2, 22) else "rd" if d in (3, 23) else "th"
+    return f"Repaid on the {d}{suffix} of each month"
+
+
+def per_repayment(loan: Loan) -> str:
+    return {"weekly": "week", "fortnightly": "fortnight"}.get(loan.frequency, "month")
+
+
+# ---------------------------------------------------------------- what it bought
+def depreciation_of(loan: Loan) -> float:
+    return loan.depreciation if loan.depreciation is not None else 0.0
+
+
+def asset_points(loan: Loan, values: list[PropertyValue]) -> list[tuple[date, float]]:
+    """Valuations you've added, oldest first. A car with none starts at what you paid (loan plus deposit) on the
+    day the loan started. A home with none isn't counted in net worth (the Loans page still shows the price paid)."""
+    if not loan.count_asset or loan.kind == "personal":
+        return []
+    pts = sorted((v.date, v.value) for v in values)
+    if not pts and loan.kind != "home" and loan.start_date and (loan.original_amount + loan.deposit) > 0:
+        pts = [(loan.start_date, loan.original_amount + loan.deposit)]
+    return pts
+
+
+def value_on(loan: Loan, points: list[tuple[date, float]], d: date) -> float | None:
+    """What it's worth on day d: the latest value before then, less the yearly loss in value since."""
+    known = [p for p in points if p[0] <= d]
+    if not known:
+        return None
+    when, value = known[-1]
+    rate = depreciation_of(loan)
+    if rate:
+        value *= (1 - min(rate, 99) / 100) ** ((d - when).days / 365.25)
+    return value
+
+
+def asset_series(loan: Loan, points: list[tuple[date, float]], end: date) -> list[tuple[date, float]]:
+    """Points to draw its value from the first valuation to `end`, monthly where it's losing value."""
+    if not points:
+        return []
+    if not depreciation_of(loan):
+        return points + [(max(end, points[-1][0]), points[-1][1])]
+    out, d = [], points[0][0]
+    while d < end:
+        out.append((d, value_on(loan, points, d)))
+        d += relativedelta(months=1)
+    out.append((end, value_on(loan, points, end)))
+    return sorted(set(out) | {(p, value_on(loan, points, p)) for p, _ in points})
+
+
 def summary(s: Session, loan: Loan, today: date, what: WhatIf | None = None) -> dict:
     acc = s.get(Account, loan.account_id) if loan.account_id else None
     meta = loan_meta(acc)
@@ -186,9 +285,10 @@ def summary(s: Session, loan: Loan, today: date, what: WhatIf | None = None) -> 
     if not rates:
         rates = [(loan.start_date or today, 0.0)]
     fixed_until = loan.fixed_until or _d(interest_meta.get("expires_at"))
-    maturity = _d(meta.get("matures_at")) or ((loan.start_date + relativedelta(years=loan.term_years)) if loan.start_date
-                                              else today + relativedelta(years=loan.term_years))
+    maturity = maturity_of(loan, meta, today)
     hist = history(s, loan, rates)
+    anchor = schedule_anchor(loan, repay_meta, hist)
+    per_year = FREQUENCIES.get(loan.frequency, 12)
 
     # where the forecast starts: the last repayment, with the bank's balance if it's connected
     since = hist[-1].date if hist else (loan.start_date or today)
@@ -196,16 +296,17 @@ def summary(s: Session, loan: Loan, today: date, what: WhatIf | None = None) -> 
     bank_owed = -acc.balance_current if acc and acc.balance_current < 0 else None
     if bank_owed is not None:
         owed = bank_owed
-    payment = (repay_meta.get("next_amount") if isinstance(repay_meta.get("next_amount"), (int, float)) else None) \
+    payment = loan.repayment \
+        or (repay_meta.get("next_amount") if isinstance(repay_meta.get("next_amount"), (int, float)) else None) \
         or (hist[-1].payment if hist else None) \
-        or table_payment(owed, rate_on(rates, today), months_between(today, maturity))
+        or table_payment(owed, rate_on(rates, today), periods_between(today, maturity, loan.frequency), per_year)
     payment = float(payment)
 
     def run(w: WhatIf) -> Plan:
         after = w.refix_rate if w.refix_rate is not None else loan.rate_after
         pay_after = None if w.refix_rate is not None else loan.payment_after
         return project(owed, since, rates, payment, loan.payment_day, maturity, fixed_until, after, pay_after,
-                       w.extra, w.lump, w.lump_date)
+                       w.extra, w.lump, w.lump_date, loan.frequency, anchor)
 
     base = run(WhatIf())
     alt = run(what) if what and what.active else None
@@ -213,24 +314,31 @@ def summary(s: Session, loan: Loan, today: date, what: WhatIf | None = None) -> 
     paid = {"payments": sum(r.payment for r in hist), "interest": sum(r.interest for r in hist),
             "principal": sum(r.principal for r in hist)}
     values = sorted(s.exec(select(PropertyValue).where(PropertyValue.loan_id == loan.id)).all(), key=lambda v: v.date)
-    value = values[-1].value if values else (loan.original_amount + loan.deposit)
-    equity = value - owed
+    points = asset_points(loan, values)
+    value = value_on(loan, points, today)
+    if value is None and loan.kind == "home" and loan.count_asset:
+        value = loan.original_amount + loan.deposit  # the price paid, until you add a valuation
+    has_asset = bool(value)
+    equity = (value - owed) if has_asset else 0.0
     rate_now = rate_on(rates, today)
 
     return {
         "loan": loan, "account": acc, "meta": meta, "rates": rates, "rate_now": rate_now, "fixed_until": fixed_until,
         "maturity": maturity, "history": hist, "base": base, "alt": alt, "what": what or WhatIf(),
         "owed": owed, "bank_owed": bank_owed, "since": since, "payment": payment, "paid": paid,
-        "value": value, "values": values, "equity": equity, "equity_pct": equity / value if value else 0,
-        "lvr": owed / value if value else 0, "per_day": owed * rate_now / 100 / 365,
-        "next": base.rows[0] if base.rows else None,
+        "has_asset": has_asset, "asset_name": ASSETS.get(loan.kind, "What it bought"), "kind_name": KINDS.get(loan.kind, "Loan"),
+        "value": value or 0.0, "values": values, "asset_points": points, "depreciation": depreciation_of(loan),
+        "equity": equity, "equity_pct": equity / value if has_asset else 0,
+        "lvr": owed / value if has_asset else 0, "per_day": owed * rate_now / 100 / 365,
+        "next": base.rows[0] if base.rows else None, "schedule": schedule_text(loan), "per": per_repayment(loan),
         "refix_days": (fixed_until - today).days if fixed_until and fixed_until >= today else None,
-        "repay_meta": repay_meta, "milestones": milestones(loan, hist, base, value, today),
+        "repay_meta": repay_meta, "milestones": milestones(loan, hist, base, points, value or 0.0, today),
         "year_interest": sum(r.interest for r in hist + base.rows if r.date.year == today.year),
     }
 
 
-def milestones(loan: Loan, hist: list[Row], plan: Plan, value: float, today: date) -> list[dict]:
+def milestones(loan: Loan, hist: list[Row], plan: Plan, points: list[tuple[date, float]], value: float,
+               today: date) -> list[dict]:
     rows = hist + plan.rows
     out = []
 
@@ -243,15 +351,21 @@ def milestones(loan: Loan, hist: list[Row], plan: Plan, value: float, today: dat
     for mark in (1_000_000, 750_000, 500_000, 250_000):
         if start > mark:
             first(f"Less than ${mark:,.0f} owing", lambda r, m=mark: r.balance < m)
-    if value:
+    if loan.kind == "home" and value:
         first("20% equity (loan-to-value 80%)", lambda r: r.balance <= value * 0.8,
               "Usually the point where low-equity fees stop.")
         first("50% equity", lambda r: r.balance <= value * 0.5)
+    elif points:
+        name = ASSETS.get(loan.kind, "it").lower()
+        first(f"The {name} is worth more than you owe",
+              lambda r: (value_on(loan, points, r.date) or 0) >= r.balance,
+              "Until then, selling it wouldn’t clear the loan.")
     if start:
         first("Halfway: half the loan repaid", lambda r: r.balance <= start / 2)
     first("Each repayment is more principal than interest", lambda r: r.principal > r.interest)
     if plan.payoff:
-        out.append({"label": "Mortgage-free", "date": plan.payoff, "done": False, "about": ""})
+        out.append({"label": "Mortgage-free" if loan.kind == "home" else "Paid off", "date": plan.payoff,
+                    "done": False, "about": ""})
     return sorted(out, key=lambda m: m["date"])
 
 
@@ -422,3 +536,45 @@ def yearly_split(rows: list[Row], today: date, height: int = 200) -> Markup:
         ticks.append(f'<span>{yr if k % every == 0 else ""}</span>')
     return Markup(f'<div class="ysplit" style="--n:{n};--h:{height}px" role="img" aria-label="Interest and principal by year">'
                   f'<div class="ys-plot">{"".join(cols)}</div><div class="ys-axis">{"".join(ticks)}</div></div>')
+
+
+# ---------------------------------------------------------------- the repayment as a bill
+def paid_from(s: Session, loan: Loan, limit: int = 12) -> list[Transaction]:
+    """Money out of your other accounts that paid this loan, newest first: the other half of each repayment."""
+    if not loan.account_id:
+        return []
+    ins = s.exec(select(Transaction).where(Transaction.account_id == loan.account_id, Transaction.amount > 0)
+                 .order_by(Transaction.date.desc()).limit(limit)).all()
+    out = []
+    for t in ins:
+        other = s.get(Transaction, t.transfer_id) if t.transfer_id else None
+        if other is None:  # not paired as a transfer: the same amount leaving another account around then
+            other = s.exec(select(Transaction).where(
+                Transaction.account_id != loan.account_id, Transaction.amount == -t.amount,
+                Transaction.date >= t.date - timedelta(days=4), Transaction.date <= t.date + timedelta(days=1))).first()
+        if other is not None and other.amount < 0 and other.id not in {o.id for o in out}:
+            out.append(other)
+    return out
+
+
+def repayment_bill(s: Session, loan: Loan, paid: list[Transaction] | None = None) -> tuple[Bill | None, bool]:
+    """The bill that sets this loan's repayments aside, and whether you've linked it (False: it only looks like it)."""
+    if loan.bill_id:
+        bill = s.get(Bill, loan.bill_id)
+        if bill:
+            return bill, True
+    paid = paid_from(s, loan) if paid is None else paid
+    for t in paid:
+        if t.bill_id and s.get(Bill, t.bill_id):
+            return s.get(Bill, t.bill_id), False
+    for bill in s.exec(select(Bill).where(Bill.active == True).order_by(Bill.id)):  # noqa: E712
+        if any(bill_matches(bill, f"{t.description} {t.merchant}", -t.amount) for t in paid):
+            return bill, False
+    return None, False
+
+
+def bill_from_repayments(loan: Loan, payment: float, first_due: date, txn: Transaction, category_id: int | None) -> Bill:
+    """A bill for the repayment, matched on the text of the last payment out of your everyday account."""
+    return Bill(name=loan.name[:80], amount=round(payment, 2), frequency=loan.frequency if loan.frequency in FREQUENCIES
+                else "monthly", anchor_date=first_due, match_pattern=clean_pattern(txn), category_id=category_id,
+                account_id=txn.account_id)

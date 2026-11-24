@@ -1,51 +1,60 @@
 {% extends "base.html" %}
-{% block title %}Mortgage setup · Payday{% endblock %}
+{% set home = kind == 'home' %}
+{% block title %}{{ loan.name ~ ' setup' if loan else 'Add a loan' }} · Payday{% endblock %}
 {% block content %}
 {% set notes = {'saved': 'Saved.', 'deleted': 'Removed.', 'cleared': 'Imported repayments removed.',
   'imported': 'Loaded ' ~ count ~ ' repayments from your spreadsheet, with its rates and property values.'} %}
 {% set bad = {'badimport': 'That file didn’t have any repayments Payday could read. Download the sheet as CSV (File → Download → Comma-separated values) and try again.',
   'badrate': 'Enter a date and a rate like 6.25.', 'badvalue': 'Enter a date and a value above zero.'} %}
-<p class="small">{% if loan %}<a href="/mortgage">{{ loan.name }}</a>{% else %}<a href="/">Overview</a>{% endif %}</p>
+{% set dep_default = default_dep.get(kind) %}
+<p class="small"><a href="/loans">Loans</a>{% if loan %} · <a href="/loans/{{ loan.id }}">{{ loan.name }}</a>{% endif %}</p>
 <div class="pagehead"><div>
-  <h1>Mortgage setup</h1>
-  <p class="sub">The details Payday needs to track the loan and forecast it.</p>
+  <h1>{{ loan.name ~ ' setup' if loan else 'Add a loan' }}</h1>
+  <p class="sub">The details Payday needs to track the loan and forecast it. Anything the bank already tells Payday can be left empty.</p>
 </div></div>
 {% if msg in notes %}<p class="flash" role="status">{{ notes[msg] }}</p>{% elif msg in bad %}<p class="flash bad" role="alert">{{ bad[msg] }}</p>{% endif %}
 
+{% if loan and home %}
 <section class="section">
-  <h2>1. Load your repayments so far</h2>
+  <h2>Load your repayments so far</h2>
   <div class="panel" style="margin-top:.75rem">
-    <p class="lede small" style="margin-top:0">From your spreadsheet: in Google Sheets choose <strong>File → Download → Comma-separated values</strong>, then pick the file. Loading again replaces what was loaded before.</p>
-    <form class="admin-only row" method="post" action="/mortgage/import" enctype="multipart/form-data" style="gap:.75rem;flex-wrap:wrap">
+    <p class="lede small" style="margin-top:0">From your mortgage spreadsheet: in Google Sheets choose <strong>File → Download → Comma-separated values</strong>, then pick the file. Loading again replaces what was loaded before.</p>
+    <form class="admin-only row" method="post" action="/loans/{{ loan.id }}/import" enctype="multipart/form-data" style="gap:.75rem;flex-wrap:wrap">
       <input type="file" name="file" accept=".csv,text/csv" required>
       <button>Load repayments</button>
     </form>
     {% if entries %}<p class="small" style="margin:.75rem 0 0">{{ entries|length }} repayments loaded, {{ entries[0].date|dmy }} to {{ entries[-1].date|dmy }}.
       Owed after the last one: {{ entries[-1].balance|money }}.
-      <form class="admin-only" method="post" action="/mortgage/history/clear" style="display:inline" data-confirm="Remove the repayments loaded from your spreadsheet?"><button class="linkish">Remove them</button></form></p>
+      <form class="admin-only" method="post" action="/loans/{{ loan.id }}/history/clear" style="display:inline" data-confirm="Remove the repayments loaded from your spreadsheet?"><button class="linkish">Remove them</button></form></p>
       <p class="muted small" style="margin:.35rem 0 0">Repayments after {{ entries[-1].date|dmy }} come from the bank’s loan account once it’s linked below.</p>{% endif %}
   </div>
 </section>
+{% endif %}
 
-<form method="post" action="/mortgage/setup" class="section">
-  <h2>2. The loan</h2>
+<form method="post" action="{{ '/loans/' ~ loan.id ~ '/setup' if loan else '/loans/new' }}" class="section">
+  <h2>The loan</h2>
   <div class="panel" style="margin-top:.75rem">
     <div class="fields">
-      <label>Name <input name="name" value="{{ loan.name if loan else 'Mortgage' }}" maxlength="60"></label>
+      <label>Kind of loan
+        <select name="kind">{% for k, label in kinds.items() %}<option value="{{ k }}" {% if k == kind %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label>Name <input name="name" value="{{ loan.name if loan else kinds[kind] }}" maxlength="60"></label>
       <label>Loan account at the bank
         <select name="account_id"><option value="">Not linked</option>
-          {% for a in accounts %}<option value="{{ a.id }}" {% if loan and loan.account_id == a.id %}selected{% elif not loan and a.type == 'LOAN' %}selected{% endif %}>{{ a.name }}{% if a.institution %} ({{ a.institution }}){% endif %}{{ ' · loan' if a.type == 'LOAN' }}</option>{% endfor %}
+          {% for a in accounts %}<option value="{{ a.id }}" {% if loan and loan.account_id == a.id %}selected{% elif not loan and a.id == new_account %}selected{% endif %}>{{ a.name }}{% if a.institution %} ({{ a.institution }}){% endif %}{{ ' · loan' if a.type == 'LOAN' }}</option>{% endfor %}
         </select></label>
       <label>Repayments come out of
         <select name="pay_account_id"><option value="">Don’t show</option>
           {% for a in accounts if a.type != 'LOAN' %}<option value="{{ a.id }}" {% if loan and loan.pay_account_id == a.id %}selected{% endif %}>{{ a.name }}{% if a.institution %} ({{ a.institution }}){% endif %}</option>{% endfor %}
         </select></label>
-      <label>Amount borrowed <input name="original_amount" inputmode="decimal" value="{{ '%.2f'|format(loan.original_amount) if loan and loan.original_amount }}" placeholder="600000"></label>
-      <label>Deposit <input name="deposit" inputmode="decimal" value="{{ '%.2f'|format(loan.deposit) if loan and loan.deposit }}"></label>
+      <label>Amount borrowed <input name="original_amount" inputmode="decimal" value="{{ '%.2f'|format(loan.original_amount) if loan and loan.original_amount }}" placeholder="{{ '600000' if home else '32000' }}"></label>
+      <label>{{ 'Deposit' if home else 'Deposit or trade-in' }} <input name="deposit" inputmode="decimal" value="{{ '%.2f'|format(loan.deposit) if loan and loan.deposit }}"></label>
       <label>Start date <input type="date" name="start_date" value="{{ loan.start_date.isoformat() if loan and loan.start_date }}"></label>
-      <label>Term in years <input type="number" name="term_years" min="1" max="50" value="{{ loan.term_years if loan else 30 }}"></label>
-      <label>Repayment day of the month <input type="number" name="payment_day" min="1" max="31" value="{{ loan.payment_day if loan else 20 }}"></label>
-      <label class="check wide"><input type="checkbox" name="leave_out" value="true" checked> Keep the loan and repayment accounts out of the budget (untick “Balance counts” and “Budget counts” on both)</label>
+      <div class="row" style="gap:.5rem;align-items:end">
+        <label style="flex:1">Term <input name="term" inputmode="numeric" value="{{ (loan.term_months if loan.term_months else loan.term_years) if loan else (30 if home else 60) }}"></label>
+        <label>&nbsp;<select name="term_unit"><option value="years" {% if (loan and not loan.term_months) or (not loan and home) %}selected{% endif %}>years</option><option value="months" {% if (loan and loan.term_months) or (not loan and not home) %}selected{% endif %}>months</option></select></label>
+      </div>
+      <label>Interest rate now (% p.a.) <input name="rate" inputmode="decimal" value="{{ '%.2f'|format(rate_now) if rate_now is not none }}" placeholder="{{ '6.25' if home else '12.9' }}"></label>
+      <label>Early repayment fee <input name="early_fee" inputmode="decimal" value="{{ '%.2f'|format(loan.early_fee) if loan and loan.early_fee }}" placeholder="None"></label>
     </div>
     {% if meta %}<p class="muted small" style="margin:.85rem 0 0">From the bank:
       {% if meta.interest and meta.interest.rate %}{{ meta.interest.rate }}% {{ (meta.interest.type or '')|lower }}{% if meta.interest.expires_at %} until {{ meta.interest.expires_at[:10] }}{% endif %}. {% endif %}
@@ -53,28 +62,52 @@
       {% if meta.matures_at %}Ends {{ meta.matures_at[:10] }}.{% endif %}</p>{% endif %}
   </div>
 
-  <h2 id="refix" style="margin-top:1.5rem">3. When the fixed rate ends</h2>
+  <h2 style="margin-top:1.5rem">Repayments</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <div class="fields">
+      <label>How often
+        <select name="frequency">{% for f, label in [('weekly', 'Every week'), ('fortnightly', 'Every fortnight'), ('monthly', 'Every month')] %}<option value="{{ f }}" {% if (loan and loan.frequency == f) or (not loan and f == ('monthly' if home else 'fortnightly')) %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <label>Repayment <input name="repayment" inputmode="decimal" value="{{ '%.2f'|format(loan.repayment) if loan and loan.repayment }}" placeholder="From the bank or your repayments"></label>
+      <label>A repayment date (weekly or fortnightly) <input type="date" name="repay_date" value="{{ loan.repay_date.isoformat() if loan and loan.repay_date }}"></label>
+      <label>Day of the month (monthly) <input type="number" name="payment_day" min="1" max="31" value="{{ loan.payment_day if loan else 20 }}"></label>
+      <label class="check wide"><input type="checkbox" name="leave_out" value="true" checked> Keep the loan account out of the budget (untick “Balance counts” and “Budget counts” on it)</label>
+      <label class="check wide"><input type="checkbox" name="leave_out_pay" value="true" {% if home %}checked{% endif %}> Also keep the repayment account out, if it’s only used for this loan</label>
+    </div>
+    <p class="muted small" style="margin:.75rem 0 0">Leave the repayment empty and Payday uses the bank’s figure, then your last repayment. Any past or upcoming date works for weekly or fortnightly repayments.</p>
+  </div>
+
+  <h2 id="refix" style="margin-top:1.5rem">When the fixed rate ends</h2>
   <div class="panel" style="margin-top:.75rem">
     <div class="fields">
       <label>Fixed until <input type="date" name="fixed_until" value="{{ loan.fixed_until.isoformat() if loan and loan.fixed_until }}"></label>
       <label>Rate you expect after (% p.a.) <input name="rate_after" inputmode="decimal" value="{{ loan.rate_after if loan and loan.rate_after is not none }}" placeholder="Same as now"></label>
       <label>Repayment after <input name="payment_after" inputmode="decimal" value="{{ '%.2f'|format(loan.payment_after) if loan and loan.payment_after }}" placeholder="Worked out for you"></label>
     </div>
-    <p class="muted small" style="margin:.75rem 0 0">Leave the repayment empty and Payday works out what the bank would ask to finish on time at the new rate.</p>
+    <p class="muted small" style="margin:.75rem 0 0">Most car and personal loans stay on one rate: leave this empty. Leave the repayment empty and Payday works out what the bank would ask to finish on time at the new rate.</p>
   </div>
-  <div class="admin-only" style="margin-top:1rem"><button>Save mortgage</button></div>
+
+  <h2 id="asset" style="margin-top:1.5rem">What it bought</h2>
+  <div class="panel" style="margin-top:.75rem">
+    <div class="fields">
+      <label class="check wide"><input type="checkbox" name="count_asset" value="true" {% if (loan and loan.count_asset) or (not loan and kind != 'personal') %}checked{% endif %}> Count it in net worth (not for personal loans)</label>
+      <label>Loses value each year (%) <input name="depreciation" inputmode="decimal" value="{{ loan.depreciation if loan and loan.depreciation is not none else (dep_default if not loan and dep_default else '') }}" placeholder="{{ 'Keeps its value' if home else '15' }}"></label>
+    </div>
+    <p class="muted small" style="margin:.75rem 0 0">{% if home %}Add valuations below as you get them.{% else %}For a car, 15% a year is a common rule of thumb. Payday starts from what you paid (loan plus deposit), or from your latest estimate below, and takes that much off each year.{% endif %}</p>
+  </div>
+  <div class="admin-only" style="margin-top:1rem"><button>{{ 'Save loan' if loan else 'Add loan' }}</button></div>
 </form>
 
+{% if loan %}
 <div class="grid2 section">
 <section id="rates">
   <h2>Interest rate history</h2>
   <div class="panel flush" style="margin-top:.75rem">
     <table class="nosearch nosort"><thead><tr><th>From</th><th class="num">Rate p.a.</th><th>Note</th><th class="admin-only"></th></tr></thead><tbody>
     {% for r in rates|reverse %}<tr><td>{{ r.effective|dmy }}</td><td class="num">{{ '%.2f'|format(r.rate) }}%</td><td>{{ r.note }}</td>
-      <td class="admin-only"><form method="post" action="/mortgage/rates/{{ r.id }}/delete"><button class="linkish">Remove</button></form></td></tr>
+      <td class="admin-only"><form method="post" action="/loans/{{ loan.id }}/rates/{{ r.id }}/delete"><button class="linkish">Remove</button></form></td></tr>
     {% else %}<tr><td colspan="4" class="empty">No rates yet.</td></tr>{% endfor %}
     </tbody></table>
-    <form class="admin-only fields" method="post" action="/mortgage/rates" style="padding:1rem 1.1rem;border-top:1px solid var(--line)">
+    <form class="admin-only fields" method="post" action="/loans/{{ loan.id }}/rates" style="padding:1rem 1.1rem;border-top:1px solid var(--line)">
       <label>From <input type="date" name="effective" required></label>
       <label>Rate % p.a. <input name="rate" inputmode="decimal" placeholder="6.25" required></label>
       <label>Note <input name="note" placeholder="2 year fixed"></label>
@@ -83,20 +116,27 @@
   </div>
 </section>
 <section id="values">
-  <h2>Property values</h2>
+  <h2>{{ 'Property values' if home else 'Value estimates' }}</h2>
   <div class="panel flush" style="margin-top:.75rem">
     <table class="nosearch nosort"><thead><tr><th>Date</th><th class="num">Value</th><th>Source</th><th class="admin-only"></th></tr></thead><tbody>
     {% for v in values|reverse %}<tr><td>{{ v.date|dmy }}</td><td class="num">{{ v.value|money }}</td><td>{{ v.note }}</td>
-      <td class="admin-only"><form method="post" action="/mortgage/values/{{ v.id }}/delete"><button class="linkish">Remove</button></form></td></tr>
+      <td class="admin-only"><form method="post" action="/loans/{{ loan.id }}/values/{{ v.id }}/delete"><button class="linkish">Remove</button></form></td></tr>
     {% else %}<tr><td colspan="4" class="empty">No values yet. Payday uses the price you paid (loan plus deposit).</td></tr>{% endfor %}
     </tbody></table>
-    <form class="admin-only fields" method="post" action="/mortgage/values" style="padding:1rem 1.1rem;border-top:1px solid var(--line)">
+    <form class="admin-only fields" method="post" action="/loans/{{ loan.id }}/values" style="padding:1rem 1.1rem;border-top:1px solid var(--line)">
       <label>Date <input type="date" name="when" required></label>
       <label>Value <input name="value" inputmode="decimal" required></label>
-      <label>Source <input name="note" placeholder="RV, valuation"></label>
+      <label>Source <input name="note" placeholder="{{ 'RV, valuation' if home else 'Trade Me listings' }}"></label>
       <div><button class="quiet">Add value</button></div>
     </form>
   </div>
 </section>
 </div>
+
+<section class="section admin-only">
+  <form method="post" action="/loans/{{ loan.id }}/delete" data-confirm="Remove {{ loan.name }} and its repayment history, rates and values from Payday? The bank account itself stays.">
+    <button class="linkish small">Remove this loan from Payday</button>
+  </form>
+</section>
+{% endif %}
 {% endblock %}
