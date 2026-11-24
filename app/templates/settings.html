@@ -240,6 +240,76 @@
   <form method="post" action="/categories/{{ cf.id }}/rename"><input type="hidden" name="name" value="{{ ci.name }}"><input type="hidden" name="merge" value="true"><button class="small">Merge</button></form></div>
 {% endif %}
 {% endif %}
+{% set pl = plan %}{% set inc = pl.income.amount %}{% set left = pl.unallocated %}
+{% set base = [inc, pl.allocated]|max or 1 %}
+<section class="paycard budgetcard" aria-labelledby="plan-head">
+  <div class="pc-top"><span class="pc-days">Budget for {{ 'this month' if pay_frequency == 'calendar' else 'this pay' }}, {{ period[0]|nice }} to {{ period[1]|daybefore|nice }}</span></div>
+  {% if left >= 0.5 %}
+  <h2 id="plan-head" class="pc-figure">{{ left|money }}</h2>
+  <p class="pc-say">still to give a job</p>
+  <p class="pc-note">{{ inc|money }} expected in. Budget the rest to a category or a goal until this reaches $0.</p>
+  {% elif left > -0.5 %}
+  <h2 id="plan-head" class="pc-figure">$0</h2>
+  <p class="pc-say">left to allocate. Every dollar has a job.</p>
+  <p class="pc-note">All {{ inc|money }} of expected income is budgeted.</p>
+  {% else %}
+  <h2 id="plan-head" class="pc-figure over">{{ (-left)|money }}</h2>
+  <p class="pc-say">more budgeted than you expect to earn</p>
+  <p class="pc-note">Trim a category below, or this pay will dip into savings or the buffer.</p>
+  {% endif %}
+  <div class="paybar" role="img" aria-label="Expected income {{ inc|round|int }}: bills {{ pl.bills|round|int }}, day to day {{ pl.day_to_day|round|int }}, goals {{ pl.goals|round|int }}, unallocated {{ [left, 0]|max|round|int }}">
+    {% for cls, v in [('pb-paid', pl.bills), ('pb-spent', pl.day_to_day), ('pb-due', pl.goals), ('pb-left', [left, 0]|max)] if v > 0 %}
+    <span class="{{ cls }}" style="flex-grow: {{ (v / base * 1000)|round|int }}"></span>
+    {% endfor %}
+  </div>
+  <dl class="paykey">
+    <div><dt><i class="pb-paid"></i>Bills due</dt><dd>{{ pl.bills|money }}</dd></div>
+    <div><dt><i class="pb-spent"></i>Day to day</dt><dd>{{ pl.day_to_day|money }}</dd></div>
+    <div><dt><i class="pb-due"></i>Goals</dt><dd>{{ pl.goals|money }}</dd></div>
+    <div><dt><i class="pb-left"></i>Unallocated</dt><dd>{{ left|money }}</dd></div>
+  </dl>
+</section>
+
+<form class="panel incomeform" method="post" action="/settings/expected-income">
+  <div class="grow"><strong>Expected income {{ inc|money }}</strong>
+    <div class="muted small">{% if pl.income.source == 'fixed' %}A fixed amount you set.{% elif pl.income.source == 'landed' %}What’s landed this pay so far.{% else %}Average of your last 3 pays. {{ pl.income.landed|money }} has landed so far.{% endif %}</div></div>
+  <input class="amt-in" name="amount" inputmode="decimal" placeholder="Work it out" value="{{ '%.2f'|format(inc) if pl.income.source == 'fixed' else '' }}" aria-label="Expected income">
+  <button class="quiet small">Set</button>
+</form>
+
+<div class="listhead"><h2>Spending categories <small>{{ pl.budgeted|money }} budgeted</small></h2></div>
+<div class="list budgetrows">
+  {% for r in pl.rows %}{% set c = r.cat %}
+  {% set pct = (r.spent / r.budget * 100) if r.budget else 0 %}
+  <div class="row">
+    <div class="grow">
+      <div class="title">{{ c.name }}</div>
+      <div class="muted small">{% if r.mode == 'off' %}No budget{% elif not r.budget %}No spending in the last 3 pays, so nothing budgeted{% else %}{{ r.spent|money }} spent of {{ r.budget|money }}{% endif %}
+        {% if r.bills %} · includes {{ r.bills|money }} of bills{% endif %}
+        {% if r.mode == 'fixed' and r.usual %} · usually {{ r.usual|money }}{% endif %}</div>
+      {% if r.short %}<div class="small" style="color:var(--rata)">Bills due here are more than its budget.</div>{% endif %}
+      {% if r.budget %}<div class="bar{{ ' over' if pct > 100 else (' near' if pct > 85) }}"><span style="width: {{ [pct, 100]|min|round|int }}%"></span></div>{% endif %}
+    </div>
+    <form class="inline" method="post" action="/categories/{{ c.id }}/limit">
+      <select name="limit_mode" data-limit-mode aria-label="Budget for {{ c.name }}">
+        <option value="auto" {% if c.limit_mode == 'auto' %}selected{% endif %}>Usual{% if r.usual %} (${{ '%.0f'|format(r.usual) }}){% endif %}</option>
+        <option value="fixed" {% if c.limit_mode == 'fixed' %}selected{% endif %}>Fixed amount</option>
+        <option value="off" {% if c.limit_mode == 'off' %}selected{% endif %}>No budget</option>
+      </select>
+      <input class="amt-in" name="limit_amount" data-limit-amount inputmode="decimal" placeholder="$ a pay"
+             value="{{ '%.2f'|format(c.limit_amount) if c.limit_amount else '' }}" aria-label="Fixed amount for {{ c.name }}">
+      <button class="quiet small">Save</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% if pl.goals %}
+  <a class="row" href="/goals"><div class="grow"><div class="title">Goals</div><div class="muted small">Set aside this pay for goals marked “Budget for this”</div></div><span class="num">{{ pl.goals|money }}</span></a>
+  {% endif %}
+</div>
+
+<details class="fold" style="margin-top:1.5rem">
+<summary><h2>Manage categories</h2><span class="sum muted small" style="font-weight:400">Rename, merge, delete or add</span></summary>
+<div class="body">
 <div class="list" data-filter-list>
   {% for c in cats %}
   {% set builtin = c.name in ('Income', 'Transfer', 'Uncategorised', 'Bills') %}
@@ -264,6 +334,8 @@
     <div class="wide"><button>Add category</button></div>
   </form>
 </div>
+</div>
+</details>
 
 {# ------------------------------------------------------------------ people #}
 {% elif tab == 'members' %}

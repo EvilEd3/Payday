@@ -955,3 +955,9 @@ input.tiny { width: 4.5rem; }
 .nw-y.bottom { bottom: 0; transform: translateY(50%); }
 .nw-axis { display: flex; justify-content: space-between; margin: .5rem 0 0 4.5rem; font-size: .6875rem; color: var(--muted); }
 .nw-axis span { flex: 0 0 auto; width: 0; display: flex; justify-content: center; white-space: nowrap; }
+.budgetcard { margin-bottom: 1rem; }
+form.panel.incomeform { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.incomeform .grow { flex: 1 1 14rem; }
+form.incomeform > input.amt-in.amt-in { width: 10rem; flex: none; margin: 0; }
+.incomeform button { flex: none; }
+.budgetrows .bar { margin-top: .45rem; max-width: 22rem; }

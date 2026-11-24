@@ -474,3 +474,47 @@ def review_groups(ctx: "Ctx") -> list[dict]:
 def _select_all():
     from sqlmodel import select as _select
     return _select(Transaction)
+
+
+# ---------- budget plan: every dollar of this pay given a job ----------
+def expected_income(ctx: "Ctx", offset: int = 0) -> dict:
+    """What this pay should bring in: what has landed so far, or the average of the last LIMIT_PERIODS pays
+    if that's more (pay often lands after the period starts). A fixed amount set in settings wins."""
+    def income(off: int) -> float:
+        start, end = ctx.period(off)
+        return sum(t.amount for t in ctx.pieces(start, end)
+                   if t.amount > 0 and ctx.kind(t) == "income" and ctx.counts(t))
+    landed = income(offset)
+    average = sum(income(offset - k) for k in range(1, LIMIT_PERIODS + 1)) / LIMIT_PERIODS
+    from .db import get_setting  # local import keeps this module's imports small
+    fixed = get_setting(ctx.s, "expected_income")
+    if fixed:
+        return {"amount": float(fixed), "source": "fixed", "landed": landed, "average": average}
+    return {"amount": max(landed, average), "source": "landed" if landed >= average else "average",
+            "landed": landed, "average": average}
+
+
+def budget_plan(ctx: "Ctx", offset: int = 0, goals_total: float = 0.0) -> dict:
+    """Expected income against the budget of every spending category (its limit) and money set aside for
+    goals, leaving what's unallocated. Bills are part of their category's budget, as they are for limits."""
+    limits = category_limits(ctx, offset)
+    usual = usual_spend(ctx, offset)
+    due = bills_due_by_category(ctx, offset)
+    spent = category_spend(ctx, *ctx.period(offset))
+    rows = []
+    for cid, cat in sorted(ctx.cats.items(), key=lambda kv: kv[1].name.lower()):
+        if cat.kind != "expense":
+            continue
+        lim = limits.get(cid)
+        budget = lim["limit"] if lim else 0.0
+        rows.append({"cat": cat, "budget": budget, "mode": cat.limit_mode, "usual": usual.get(cid, 0.0),
+                     "bills": due.get(cid, 0.0), "spent": spent.get(cid, 0.0),
+                     "short": budget and due.get(cid, 0) > budget + 0.5})
+    rows.sort(key=lambda r: (-r["budget"], r["cat"].name.lower()))
+    income = expected_income(ctx, offset)
+    budgeted = sum(r["budget"] for r in rows)
+    bills = sum(r["bills"] for r in rows)
+    allocated = budgeted + goals_total
+    return {"income": income, "rows": rows, "budgeted": budgeted, "bills": bills, "goals": goals_total,
+            "day_to_day": budgeted - bills, "allocated": allocated, "unallocated": income["amount"] - allocated,
+            "spent": sum(r["spent"] for r in rows)}

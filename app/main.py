@@ -36,7 +36,7 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
 from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
                  PropertyValue, Rule, Setting, Split, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
-from .insights import (Ctx, bars, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
+from .insights import (Ctx, bars, budget_plan, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
                        needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups,
                        trends)
 from .forecast import account_balance, bank_balance, build_dashboard, counts_as_day_to_day
@@ -2227,7 +2227,7 @@ def mortgage_clear_history(s: Session = Depends(session)):
 
 # ---------- Settings ----------
 SETTINGS_TABS = [("pay", "Household and pay"), ("bank", "Bank connection"), ("accounts", "Accounts"),
-                 ("categories", "Categories"), ("limits", "Category limits"), ("rules", "Rules"),
+                 ("categories", "Categories and budget"), ("rules", "Rules"),
                  ("members", "People"), ("data", "Backup and export"), ("notify", "Notifications"), ("you", "You")]
 PAYDAY_ADJUST = ("previous_business_day", "next_business_day", "none")
 
@@ -2325,7 +2325,12 @@ def settings_page(request: Request, tab: str = "", s: Session = Depends(session)
                        vapid=webpush.public_key(), warn=rate_warning(s))
     elif tab == "categories":
         used = {cid: n for cid, n in s.exec(select(Transaction.category_id, func.count()).group_by(Transaction.category_id))}
-        ctx.update(cats=cats, used=used)
+        from .goals import all_goals, budget_for_goals
+        c = Ctx(s, today())
+        accounts = s.exec(select(Account)).all()
+        goals_total = budget_for_goals(all_goals(s, today(), {a.id: account_balance(s, a) for a in accounts}))
+        ctx.update(cats=cats, used=used, plan=budget_plan(c, 0, goals_total), period=period_of(s, today()),
+                   pay_frequency=get_cycle(s).frequency)
     elif tab == "data":
         ctx.update(restore=request.query_params.get("restore", ""), held=None, problem=request.query_params.get("problem", ""))
     return templates.TemplateResponse(request, "settings.html", ctx)
@@ -2610,7 +2615,7 @@ def set_limit(cat_id: int, limit_mode: str = Form("auto"), limit_amount: str = F
             cat.limit_mode = "auto"
         s.add(cat)
         s.commit()
-    return _settings("limits", msg="saved")
+    return _settings("categories", msg="saved")
 
 
 # ---------- Categories ----------
@@ -2939,3 +2944,12 @@ def help_page(request: Request, topic: str = "start"):
         return Response("Not found", status_code=404, media_type="text/plain")
     return templates.TemplateResponse(request, f"help_{topic}.html", {"page": "help", "info": site_info(),
                                                                       "callback": _link(request, "/bank/callback")})
+
+
+@app.post("/settings/expected-income")
+def set_expected_income(amount: str = Form(""), s: Session = Depends(session)):
+    """Blank goes back to working it out from your pays."""
+    value = _num(amount)
+    set_setting(s, "expected_income", f"{value:.2f}" if value else "")
+    s.commit()
+    return _settings("categories", msg="saved")
