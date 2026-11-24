@@ -179,6 +179,19 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
         runway.append({"date": d, "bills": [u for u in upcoming
                                              if u["due"] == d or (i == 0 and u["overdue"])]})
 
+    # Prototype: the whole pay period day by day, for the calendar views.
+    spent_on = defaultdict(float)
+    for t in txns:
+        if counts_as_day_to_day(t, kind(t), acc_map):
+            spent_on[t.date] -= t.amount
+    cal_days = []
+    for i in range(period_days):
+        d = start + timedelta(days=i)
+        cal_days.append({"date": d, "past": d < today, "today": d == today,
+                         "spent": spent_on.get(d, 0.0),
+                         "due": [u for u in upcoming if u["due"] == d],
+                         "paid": [p for p in paid if p["due"] == d]})
+
     by_cat = defaultdict(float)
     for t in txns:
         if kind(t) == "expense":
@@ -193,7 +206,7 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
         balance=balance, balances=balances, buffer=buffer, income=income,
         to_come=to_come, bills_paid=bills_paid, bills_pending=bills_pending, free=free,
         per_day=free / days_left if days_left else 0,
-        upcoming=upcoming, paid=paid, runway=runway, all_accounts=all_accounts,
+        upcoming=upcoming, paid=paid, runway=runway, cal_days=cal_days, all_accounts=all_accounts,
         bills_total=bills_total, goals=goals, goals_total=goals_total, budget=budget, day_to_day=day_to_day, budget_left=budget_left,
         planned_per_day=planned_per_day,
         budget_per_day=budget_left / days_left if days_left else 0,

@@ -134,6 +134,7 @@ templates.env.filters["yrsmths"] = lambda n: ("–" if n is None else
     ", ".join(x for x in (f"{n // 12} year{'s' if n // 12 != 1 else ''}" if n >= 12 else "",
                           f"{n % 12} month{'s' if n % 12 != 1 else ''}" if n % 12 or n < 12 else "") if x))
 templates.env.filters["daybefore"] = lambda d: d - timedelta(days=1)
+templates.env.globals["timedelta"] = timedelta  # prototype calendar views
 ACCOUNT_TYPES = {"CHECKING": "everyday account", "SAVINGS": "savings", "CREDITCARD": "credit card", "LOAN": "loan",
                  "KIWISAVER": "KiwiSaver", "INVESTMENT": "investment", "TERMDEPOSIT": "term deposit",
                  "FOREIGN": "foreign currency", "TAX": "tax", "REWARDS": "rewards", "WALLET": "wallet"}

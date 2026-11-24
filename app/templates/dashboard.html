@@ -118,7 +118,9 @@
 </section>
 {% endif %}
 
-{% if not d.is_past and not setup %}
+{% if request.query_params.get('cal') and not d.is_past and not setup %}
+{% include '_calview.html' %}
+{% elif not d.is_past and not setup %}
 <div class="runway" role="list" aria-label="Days {{ until }}">
   {% for day in d.runway %}
   <div role="listitem" class="day {% if loop.first %}today{% endif %} {% if day.date.weekday() >= 5 %}weekend{% endif %} {% if day.bills %}has-bill{% endif %}">

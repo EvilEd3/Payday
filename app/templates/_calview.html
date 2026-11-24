@@ -1,0 +1,117 @@
+{# Prototype calendar views for the Overview. ?cal=grid | line | weeks #}
+{% set cal = request.query_params.get('cal') %}
+{% set rate = d.planned_per_day %}
+
+{% if cal == 'grid' %}
+{# ---------- A. The whole pay period as a month ---------- #}
+<section class="calview cv-grid" aria-label="This pay, day by day">
+  <header class="cv-head">
+    <h2>This pay, day by day</h2>
+    <p class="cv-key"><span><i class="k-under"></i>Under {{ rate|money }} a day</span><span><i class="k-over"></i>Over</span><span><i class="k-bill"></i>Bill due</span></p>
+  </header>
+  <div class="cvg-wd" aria-hidden="true">{% for w in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<span>{{ w }}</span>{% endfor %}</div>
+  <ol class="cvg-cells">
+    {% for _ in range(d.start.weekday()) %}<li class="blank" aria-hidden="true"></li>{% endfor %}
+    {% for day in d.cal_days %}
+    {% set over = day.spent > rate %}
+    <li class="cell {{ 'past' if day.past }} {{ 'today' if day.today }} {{ 'wkend' if day.date.weekday() >= 5 }} {{ 'has-due' if day.due }}">
+      <span class="dn">{% if day.today %}<b>Today</b> {% endif %}{{ day.date.day }}{% if day.date.day == 1 %}<span class="mo"> {{ day.date.strftime('%b') }}</span>{% endif %}</span>
+      {% if day.past %}
+        {% if day.spent > 0 %}
+        <span class="sp {{ 'over' if over else 'under' }}"><span class="m">{{ day.spent|money }}</span></span>
+        <span class="spbar {{ 'over' if over else 'under' }}" style="--w: {{ [day.spent / rate * 50, 100]|min|round|int }}%"></span>
+        {% else %}<span class="sp none">Nothing spent</span>{% endif %}
+        {% for p in day.paid %}<span class="paidb">✓ {{ p.bill.name }}</span>{% endfor %}
+      {% elif day.today %}
+        <span class="sp today-left"><span class="m">{{ d.budget_per_day|money }}</span> to spend</span>
+      {% endif %}
+      {% for u in day.due %}<a class="chip {{ 'late' if u.overdue }}" href="/bills/{{ u.bill.id }}"><span>{{ u.bill.name }}</span><span class="m">{{ u.bill.amount|money }}</span></a>{% endfor %}
+      {% if day.due %}<span class="dot-sum m">${{ (day.due|map(attribute='bill.amount')|sum)|round|int }}</span>{% endif %}
+    </li>
+    {% endfor %}
+    <li class="cell payday"><span class="dn"><b>Payday</b> {{ d.payday.day }}</span><span class="sp">New pay in</span></li>
+  </ol>
+</section>
+
+{% elif cal == 'line' %}
+{# ---------- B. A timeline from today to payday ---------- #}
+{% set n = d.runway|length %}
+<section class="calview cv-line" aria-label="Bills {{ until }}">
+  <header class="cv-head">
+    <h2>{{ n }} days to payday</h2>
+    <p class="muted small"><span class="m">{{ d.budget_per_day|money }}</span> a day, {{ d.upcoming|length }} bills to come</p>
+  </header>
+  <div class="cvl-track" style="--n: {{ n + 1 }}">
+    {% set ns = namespace(lane=0) %}
+    {% for day in d.runway %}{% set i = loop.index0 %}
+      {% if day.date.weekday() >= 5 %}<span class="cvl-wkend" style="--i: {{ i }}"></span>{% endif %}
+      {% if day.bills %}
+      <a class="cvl-pin lane{{ ns.lane }} {{ 'end' if i > n - 5 }} {{ 'late' if day.bills|selectattr('overdue')|list }}" style="--i: {{ i }}" href="/bills/{{ day.bills[0].bill.id }}">
+        <span class="when">{{ 'Today' if i == 0 else day.date|nice }}</span>
+        {% for u in day.bills %}<span class="what">{{ u.bill.name }} <b class="m">{{ u.bill.amount|money }}</b></span>{% endfor %}
+      </a>
+      {% set ns.lane = 1 - ns.lane %}
+      {% endif %}
+    {% endfor %}
+    <div class="cvl-rail"></div>
+    {% for day in d.runway %}{% set i = loop.index0 %}
+      <span class="cvl-tick {{ 'today' if i == 0 }} {{ 'bill' if day.bills }} {{ 'mon' if day.date.weekday() == 0 }}" style="--i: {{ i }}"><span>{{ day.date.day }}</span></span>
+    {% endfor %}
+    <span class="cvl-tick payday" style="--i: {{ n }}"><span>Payday</span></span>
+  </div>
+  {# phone: the same timeline, standing up #}
+  <ol class="cvl-v">
+    {% set ns2 = namespace(gap=0) %}
+    {% for day in d.runway %}{% set i = loop.index0 %}
+      {% if i == 0 or day.bills %}
+        {% if ns2.gap %}<li class="gap">{{ ns2.gap }} day{{ 's' if ns2.gap != 1 }} with no bills</li>{% set ns2.gap = 0 %}{% endif %}
+        <li class="stop {{ 'today' if i == 0 }}">
+          <span class="when">{{ 'Today' if i == 0 else day.date.strftime('%a') }} <b>{{ day.date.day }}</b> {{ day.date.strftime('%b') }}</span>
+          {% if i == 0 %}<span class="left"><span class="m">{{ d.budget_per_day|money }}</span> to spend today</span>{% endif %}
+          {% for u in day.bills %}<a class="row {{ 'late' if u.overdue }}" href="/bills/{{ u.bill.id }}"><span>{{ u.bill.name }}{% if u.overdue %} <small>overdue</small>{% endif %}</span><b class="m">{{ u.bill.amount|money }}</b></a>{% endfor %}
+        </li>
+      {% else %}{% set ns2.gap = ns2.gap + 1 %}{% endif %}
+    {% endfor %}
+    {% if ns2.gap %}<li class="gap">{{ ns2.gap }} day{{ 's' if ns2.gap != 1 }} with no bills</li>{% endif %}
+    <li class="stop payday"><span class="when">Payday <b>{{ d.payday.day }}</b> {{ d.payday.strftime('%b') }}</span></li>
+  </ol>
+</section>
+
+{% elif cal == 'weeks' %}
+{# ---------- C. Week by week, with what each week can spend ---------- #}
+<section class="calview cv-weeks" aria-label="Weeks {{ until }}">
+  <header class="cv-head">
+    <h2>Week by week</h2>
+    <p class="muted small">At <span class="m">{{ d.budget_per_day|money }}</span> a day</p>
+  </header>
+  <ol class="cvw-list">
+  {% set ns = namespace(rows=[], cur=None) %}
+  {% for day in d.runway %}
+    {% set key = day.date.isocalendar()[1] %}
+    {% if key != ns.cur %}{% set ns.rows = ns.rows + [[day]] %}{% set ns.cur = key %}{% else %}{% set _ = ns.rows[-1].append(day) %}{% endif %}
+  {% endfor %}
+  {% for row in ns.rows %}
+    {% set bills = row|map(attribute='bills')|sum(start=[]) %}
+    {% set btotal = bills|map(attribute='bill.amount')|sum %}
+    {% set first = row[0].date %}{% set monday = first - timedelta(days=first.weekday()) %}
+    <li class="cvw-row {{ 'now' if loop.first }}">
+      <div class="cvw-label">
+        <h3>{{ 'This week' if loop.first else ('Next week' if loop.index == 2 else 'Week of ' ~ monday|short) }}</h3>
+        <span class="muted small">{% if row|length == 1 %}{{ row[0].date|long }}{% else %}{{ row[0].date|short }} to {{ row[-1].date|short }}{% endif %}{% if loop.last %}, then payday{% endif %}</span>
+      </div>
+      <div class="cvw-days">
+        {% for k in range(7) %}{% set dd = monday + timedelta(days=k) %}
+          {% set hit = row|selectattr('date', 'equalto', dd)|list %}
+          <span class="wd {{ 'in' if hit }} {{ 'today' if hit and hit[0].date == d.today }} {{ 'bill' if hit and hit[0].bills }} {{ 'payday' if dd == d.payday }}"><i>{{ dd.strftime('%a')[0] }}</i>{{ dd.day }}</span>
+        {% endfor %}
+      </div>
+      <dl class="cvw-sum">
+        <div><dt>To spend</dt><dd class="m">{{ (d.budget_per_day * row|length)|money }}</dd></div>
+        <div><dt>Bills</dt><dd class="m {{ 'due' if btotal }}">{{ btotal|money if btotal else 'None' }}</dd></div>
+      </dl>
+      {% if bills %}<ul class="cvw-bills">{% for u in bills %}<li><a href="/bills/{{ u.bill.id }}" class="{{ 'late' if u.overdue }}"><span class="when">{{ 'Overdue' if u.overdue else u.due.strftime('%a %-d') }}</span>{{ u.bill.name }} <b class="m">{{ u.bill.amount|money }}</b></a></li>{% endfor %}</ul>{% endif %}
+    </li>
+  {% endfor %}
+  </ol>
+</section>
+{% endif %}
