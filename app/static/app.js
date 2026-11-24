@@ -448,6 +448,17 @@
   }
 
   /* ---- "What's new" beside the version number after an update, until you've opened the update log ---- */
+  /* ---- "Bank data from ..." pill: tap or click shows the full sync details; tap away or Escape hides them ---- */
+  function freshTip() {
+    const set = (w, on) => { w.classList.toggle("open", on); const b = w.querySelector("[data-freshtip]"); if (b) b.setAttribute("aria-expanded", on); };
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-freshtip]");
+      $$(".freshtip").forEach((w) => { if (!w.contains(e.target)) set(w, false); });
+      if (btn) { const w = btn.closest(".freshtip"); set(w, !w.classList.contains("open")); }
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") $$(".freshtip.open").forEach((w) => set(w, false)); });
+  }
+
   function whatsNew() {
     const link = document.querySelector(".sitefoot a.ver[data-version]");
     if (!link) return;
@@ -457,7 +468,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    whatsNew(); splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
+    whatsNew(); freshTip(); splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
     tidyAddress();
     restoreScroll();
   });
