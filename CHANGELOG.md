@@ -6,6 +6,12 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **A heads-up when your bank can't cover the daily amount**: if the accounts you count hold noticeably less than
+  this pay's budget expects (often money moved to savings), the Overview says so and links to the bank check.
+- **Payee names keep their initials**: "ANZ Home Loan" and "AA Insurance" instead of "Anz" and "Aa".
+- **First steps on a new household**: until your bank's accounts arrive, the Overview shows a short setup list
+  instead of "$0.00 a day".
+
 ## 1.1.0
 
 **Before updating:** if you reach Payday from outside your network (a Cloudflare tunnel or reverse proxy), set

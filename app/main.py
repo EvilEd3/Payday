@@ -34,7 +34,7 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
                    password_problem, profile_admins, refresh_cookie, use_backup_code, user_from_cookie,
                    user_from_pre_cookie, verify_password)
 from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
-                 PropertyValue, Rule, Transaction, User, current_engine, current_profile_id, get_setting,
+                 PropertyValue, Rule, Setting, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
 from .insights import (Ctx, bars, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
                        needs_review_query, payee_detail, payee_groups, payee_key, period_summary, review_groups)
@@ -1313,8 +1313,27 @@ def service_worker():
 # ---------- Dashboard ----------
 @app.get("/")
 def dashboard(request: Request, offset: int = 0, s: Session = Depends(session)):
+    d = build_dashboard(s, today(), offset)
     return templates.TemplateResponse(request, "dashboard.html",
-                                      {"d": build_dashboard(s, today(), offset), "page": "home", "warn": rate_warning(s)})
+                                      {"d": d, "page": "home", "warn": rate_warning(s),
+                                       "setup": None if d["all_accounts"] else setup_steps(s)})
+
+
+def setup_steps(s: Session) -> list[dict]:
+    """A new household's first steps, shown on the Overview until the first accounts arrive."""
+    return [
+        {"label": "Set your payday", "href": "/settings?tab=pay",
+         "done": bool(s.get(Setting, "pay_frequency") or s.get(Setting, "payday_day")),
+         "why": "Payday budgets from one pay to the next."},
+        {"label": "Connect your bank", "href": "/settings?tab=bank", "done": bool(vault.tokens(s).get("user")),
+         "why": "Through Akahu, read only. See Help for the steps."},
+        {"label": "Sync and choose the accounts that count", "href": "/settings?tab=accounts", "done": False,
+         "why": "Press Sync now below, then tick the accounts your day-to-day money is in."},
+        {"label": "Add your bills", "href": "/bills", "done": bool(s.exec(select(Bill)).first()),
+         "why": "Payday sets their money aside and ticks them off when they're paid."},
+        {"label": "Set a goal", "href": "/goals", "done": bool(s.exec(select(Goal)).first()),
+         "why": "Optional: save towards something by a date."},
+    ]
 
 
 @app.post("/privacy")
