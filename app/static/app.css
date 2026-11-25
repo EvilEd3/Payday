@@ -887,9 +887,18 @@ main .narrow .fields:not(.one) { grid-template-columns: repeat(auto-fill, minmax
 .pc-fresh { display: inline-flex; align-items: center; gap: .4rem; font-size: .75rem; font-weight: 500; padding: .2rem .6rem;
   border-radius: 999px; background: color-mix(in srgb, currentColor 12%, transparent); opacity: .9; }
 .pc-fresh i { width: .45rem; height: .45rem; border-radius: 50%; background: currentColor; flex: none; }
+button.pc-fresh { border: 0; color: inherit; font: inherit; font-size: .75rem; font-weight: 500; cursor: pointer; min-height: 0; line-height: inherit; }
+button.pc-fresh:hover, .freshtip.open button.pc-fresh { background: color-mix(in srgb, currentColor 20%, transparent); opacity: 1; }
 .pc-fresh.late { opacity: 1; }
+/* The full sync details under the pill: on hover where there's a mouse, on tap everywhere */
+.freshtip { position: relative; display: inline-flex; }
+.freshtip .tip { display: none; position: absolute; right: 0; top: calc(100% + .4rem); z-index: 20; width: min(22rem, calc(100vw - 2rem));
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--r-panel); box-shadow: var(--shadow);
+  padding: .7rem .85rem; font-size: .8125rem; font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.freshtip.open .tip { display: block; }
+@media (hover: hover) { .freshtip:hover .tip, .freshtip:focus-within .tip { display: block; } }
 .pc-fresh.late i { background: var(--flax); box-shadow: 0 0 0 2px color-mix(in srgb, var(--flax) 35%, transparent); }
-@media (max-width: 520px) { .pc-right { align-items: flex-start; margin-left: 0; text-align: left; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: space-between; } }
+@media (max-width: 520px) { .pc-right { position: relative; } .freshtip { position: static; } .freshtip .tip { left: 0; right: 0; width: auto; } .pc-right { align-items: flex-start; margin-left: 0; text-align: left; width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: space-between; } }
 
 /* Notifications */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

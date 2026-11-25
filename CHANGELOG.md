@@ -6,6 +6,10 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Sync details on the Overview**: hover over or tap "Bank data from ..." at the top of the Overview to see when
+  Payday last synced, how fresh each account's bank data is, and how many new transactions came in. Tap anywhere
+  else to close it.
+
 ## 1.3.0
 
 - **Loans**: the Mortgage page is now Loans, and holds as many loans as you have: a mortgage, a car loan, a
