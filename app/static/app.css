@@ -1026,4 +1026,25 @@ input.tiny { width: 4.5rem; }
   .cw { display: flex; justify-content: space-between; align-items: baseline; background: none; padding: .35rem 0 .6rem; border-radius: 0; }
   .cw.zero { display: none; }
   .cw small { font-size: .75rem; }
+/* Activity log */
+.logday { margin-top: 1.5rem; }
+.logday > h2 { font-size: .9375rem; color: var(--muted); margin: 0 0 .5rem; }
+.loglist { list-style: none; margin: 0; }
+.loglist li + li { border-top: 1px solid var(--line); }
+.loglist a { display: flex; align-items: center; gap: .9rem; padding: .7rem 1.3rem; color: inherit; text-decoration: none; }
+.loglist a:hover { background: color-mix(in srgb, var(--sunk) 55%, transparent); }
+.logtime { flex: none; width: 4.2rem; font-size: .8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.logmain { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }
+.logtitle { font-weight: 600; overflow-wrap: anywhere; }
+.logmeta { font-size: .8125rem; color: var(--muted); display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+.logamt { flex: none; font-weight: 650; font-variant-numeric: tabular-nums; }
+.logbig, .logbig.num { text-align: left; font-size: 1.6rem; font-weight: 700; margin: 0 0 .6rem; font-variant-numeric: tabular-nums; }
+.loglines { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; overflow-wrap: anywhere; }
+.loglines li { line-height: 1.45; }
+.inlineform { display: flex; align-items: end; gap: .5rem; flex-wrap: wrap; margin-top: .75rem; }
+.inlineform label { flex: 1 1 12rem; margin: 0; }
+.logkinds { display: grid; gap: .55rem; margin: .25rem 0 1rem; }
+@media (max-width: 640px) {
+  .loglist a { padding: .65rem 1rem; gap: .65rem; }
+  .logtime { width: 3.6rem; }
 }

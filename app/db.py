@@ -427,6 +427,21 @@ class Goal(SQLModel, table=True):
     done: bool = False
 
 
+class Activity(SQLModel, table=True):
+    """One line of the household's activity log: money that moved, where Payday (or someone) allocated it,
+    each notification sent, each sync and each change people made. See app/activity.py."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    at: datetime = Field(index=True)  # UTC
+    kind: str = Field(default="change", index=True)  # money | allocation | notification | sync | change
+    title: str = ""
+    body: str = ""  # the full detail, one fact per line
+    amount: Optional[float] = None
+    who: str = ""  # who did it: a person's username, or "Payday"
+    url: str = ""  # the page it's about
+    ref: str = Field(default="", index=True)  # a transaction id, or "notify:<key>" for a notification
+    data: str = ""  # extra details as JSON (a notification's recipients, the changes in a re-sort)
+
+
 class Setting(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str

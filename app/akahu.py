@@ -9,7 +9,7 @@ import httpx
 from sqlalchemy import text
 from sqlmodel import Session, delete, select
 
-from . import splits, vault
+from . import activity, splits, vault
 from .categorise import Categoriser, categorise, pair_transfers
 from .db import PG, SPENDING_TYPES, base_engine, Account, PendingTransaction, Transaction, current_engine, current_profile_id, set_setting, use_profile
 
@@ -277,6 +277,23 @@ def _ask_for_fresh_data(client: httpx.Client, accounts: list[dict], progress) ->
     return latest
 
 
+def _log_sync(s: Session, progress: Progress, trigger: str, msg: str) -> None:
+    """The sync's own steps, as one log entry, then tidy entries older than the household keeps."""
+    snap = progress.snapshot()
+    lines = [f"Started {snap.get('started', '')} ({'you pressed Sync now' if trigger == 'manual' else trigger}), "
+             f"finished {snap.get('finished', '')}"]
+    lines += [f"{st['label']}{': ' + st['detail'] if st.get('detail') else ''}" for st in snap.get("steps", [])[:-1]]
+    lines.append(msg)
+    accounts = s.exec(select(Account).order_by(Account.name)).all()
+    lines += [f"{a.name}: balance {activity.money(a.balance_current)}"
+              + (f", bank data from {a.refreshed_txns[:16].replace('T', ' ')} UTC" if a.refreshed_txns else "")
+              for a in accounts]
+    activity.record(s, "sync", "Sync failed" if msg.startswith("Sync failed") else "Synced with your bank", lines,
+                    who="Payday" if trigger != "manual" else None, url="/", data={"trigger": trigger})
+    s.commit()
+    activity.prune(s)
+
+
 def sync(trigger: str = "scheduled") -> str:
     lock, progress = _lock_for(current_profile_id()), progress_for()
     if not lock.acquire(blocking=False):
@@ -353,6 +370,19 @@ def sync(trigger: str = "scheduled") -> str:
             s.commit()
             new = len(added)
             progress.detail(f"{new} new transaction{'s' if new != 1 else ''}")
+            names = activity.Names(s)
+            if latest is None and new > activity.FIRST_IMPORT:  # the first sync: one entry, not hundreds
+                per = {}
+                for t in added:
+                    per.setdefault(t.account_id, []).append(t)
+                activity.record(s, "money", f"{new} transactions imported from the bank",
+                                [f"{names.account(a)}: {len(ts)} transactions, {ts[0].date.strftime('%-d %b')} to "
+                                 f"{ts[-1].date.strftime('%-d %b %Y')}" for a, ts in per.items()],
+                                who="Payday", url="/transactions")
+            else:
+                for t in added:
+                    activity.new_transaction(s, t, names)
+            s.commit()
 
             # Akahu occasionally replaces a transaction the bank changed with a new copy under a new id.
             # Remove our old copy so it isn't counted twice, carrying your note, tags and category across.
@@ -369,6 +399,12 @@ def sync(trigger: str = "scheduled") -> str:
             if len(stale) > max(5, len(window) * 0.3):
                 stale = []  # too many to be routine corrections
             if stale:
+                activity.record(s, "money", f"{len(stale)} transaction{'s' if len(stale) != 1 else ''} changed or removed by the bank",
+                                ["The bank no longer lists these, so Payday removed its copies. A new copy, if the bank sent one, "
+                                 "is logged as a new transaction and keeps your note and category."]
+                                + [f"{t.date.strftime('%-d %b')} {activity.money(t.amount)} {activity.payee(t)} "
+                                   f"({names.account(t.account_id)})" for t in stale],
+                                who="Payday", url="/transactions")
                 moved = _replace_stale(s, stale, added)
                 progress.detail(f"{len(stale)} replaced or removed" + (f", {moved} kept your notes or category" if moved else ""))
             elif missing:
@@ -403,6 +439,7 @@ def sync(trigger: str = "scheduled") -> str:
             set_setting(s, "last_sync_status", msg)
             progress.finish(True, msg)
             set_setting(s, "last_sync_log", json.dumps(progress.snapshot()))
+            _log_sync(s, progress, trigger, msg)
             return msg
     except Exception as e:  # surface the failure rather than crashing the scheduler
         msg = f"Sync failed. {_explain(e)}"
@@ -410,6 +447,10 @@ def sync(trigger: str = "scheduled") -> str:
         with Session(current_engine()) as s:
             set_setting(s, "last_sync_status", msg)
             set_setting(s, "last_sync_log", json.dumps(progress.snapshot()))
+            try:
+                _log_sync(s, progress, trigger, msg)
+            except Exception:  # noqa: BLE001 - the log must never hide the real problem
+                pass
         return msg
     finally:
         lock.release()

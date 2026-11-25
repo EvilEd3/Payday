@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from sqlmodel import Session, select
 
+from . import activity
 from .bills import bill_matches, closest_free_due, matches_pattern
 from .db import Bill, Category, Rule, Transaction
 
@@ -160,7 +161,8 @@ def learn(session: Session, txn: Transaction, category_id: int) -> None:
         rule = Rule(pattern=key, category_id=category_id, source="learned")
     session.add(rule)
     session.commit()
-    recategorise_all(session)
+    name = session.get(Category, category_id)
+    recategorise_all(session, f"Payday learned that {key.removeprefix('re:')} goes in {name.name if name else 'that category'}.")
 
 
 TRANSFER_DAYS = 5  # transfers between banks can take a few days, longer over a weekend
@@ -214,20 +216,29 @@ def pair_transfers(session: Session, max_days: int = TRANSFER_DAYS) -> int:
             gap = abs((cand.date - out.date).days)
             if cand.account_id != out.account_id and gap <= max_days:
                 options.append((gap, out.date, out.id, out, cand))
-    paired, engine = 0, None
+    paired, engine, names = 0, None, None
     for *_, out, cand in sorted(options, key=lambda o: o[:3]):
         if out.transfer_id is None and cand.transfer_id is None:
             engine = engine or Categoriser(session)
             link_transfer(session, out, cand, engine)
             paired += 1
+            names = names or activity.Names(session)
+            activity.record(session, "allocation",
+                            f"Transfer matched: {activity.money(-out.amount)} from {names.account(out.account_id)} "
+                            f"to {names.account(cand.account_id)}",
+                            [f"Out: {out.date.strftime('%a %-d %b')} {activity.money(out.amount)} {activity.payee(out)}",
+                             f"In: {cand.date.strftime('%a %-d %b')} {activity.money(cand.amount)} {activity.payee(cand)}",
+                             "Both halves are counted as a transfer, not spending or income."],
+                            amount=-out.amount, url=activity.txn_url(out), ref=out.id)
     session.commit()
     return paired
 
 
-def recategorise_all(session: Session) -> None:
-    """Re-run everything after a rule or bill changes. One pass, one commit."""
+def recategorise_all(session: Session, reason: str = "") -> None:
+    """Re-run everything after a rule or bill changes. One pass, one commit. Logs each transaction that moved."""
     pair_transfers(session)
     txns = session.exec(select(Transaction).order_by(Transaction.date, Transaction.id)).all()
+    before = activity.snapshot(txns)
     for t in txns:  # clear automatic bill links first so due dates can be re-assigned in date order
         if t.category_source != "manual":
             t.bill_id = t.bill_due_date = None
@@ -236,4 +247,5 @@ def recategorise_all(session: Session) -> None:
     for t in txns:
         engine.apply(t)
         session.add(t)
+    activity.resorted(session, before, txns, reason)
     session.commit()

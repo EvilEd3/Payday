@@ -14,9 +14,9 @@ from zoneinfo import ZoneInfo
 import httpx
 from sqlmodel import Session, select
 
-from . import webpush
-from .db import (Category, Goal, Membership, NotifySent, Profile, PushDevice, Transaction, current_engine,
-                 get_setting, site_engine, use_profile)
+from . import activity, webpush
+from .db import (Activity, Category, Goal, Membership, NotifySent, Profile, PushDevice, Transaction, User,
+                 current_engine, get_setting, site_engine, use_profile)
 
 log = logging.getLogger("payday.notify")
 TZ = ZoneInfo(os.getenv("TZ_NAME", "Pacific/Auckland"))
@@ -253,18 +253,75 @@ def run_for_profile(pid: int, now: datetime | None = None, client: httpx.Client 
                 batch = todo[:MAX_PER_RUN - 1] + [dict(key="", url="/", title=f"{rest} more updates",
                                                       body="Open Payday to see them all.")]
             took_any = False
+            user = site.get(User, m.user_id)
+            who = user.username if user else f"person {m.user_id}"
             for a in batch:
                 title = f"{a['title']}" + (f" · {name}" if several and name else "")
-                msg = {"title": title, "body": a["body"], "url": a["url"], "tag": a["key"] or "more"}
-                if deliver(site, m.user_id, msg, client):
+                entry = _log(pid, a, title) if a["key"] else None
+                url = (f"/activity/{entry}?household={pid}" if entry else
+                       a["url"] if a["key"] else f"/activity?kind=notification&household={pid}")
+                msg = {"title": title, "body": a["body"], "url": url, "tag": a["key"] or "more"}
+                took = deliver(site, m.user_id, msg, client)
+                if took:
                     took_any = True
                     sent_total += 1
+                if entry:
+                    _log_recipient(pid, entry, who, took, "sent" if took else "no device took it")
+            if took_any:
+                for a in todo[len(batch) - 1:] if len(todo) > MAX_PER_RUN else []:  # rolled into "N more updates"
+                    entry = _log(pid, a, a["title"])
+                    if entry:
+                        _log_recipient(pid, entry, who, 0, "included in a “more updates” notification")
             if took_any:
                 stamp = datetime.now(timezone.utc)
                 for a in todo:  # everything in this run counts as said, the rolled-up ones too
                     site.add(NotifySent(user_id=m.user_id, profile_id=pid, key=a["key"], sent_at=stamp))
                 site.commit()
         return sent_total
+
+
+WHY = {  # the setting that made Payday send each kind of alert, as shown in the log
+    "bill_due": "A bill is due soon", "bill_missed": "A bill hasn't been paid", "payday": "Your pay has landed",
+    "day_rate": "Your money per day dropped below your warning", "limit_over": "A category went over its limit",
+    "limit_near": "A category is near its limit", "big": "A big payment", "sync_failed": "A sync failed",
+    "stale": "The bank stopped sending data", "short": "An account will run short", "weekly": "Your weekly summary",
+    "period_end": "Last pay period's summary", "goal": "A goal was reached", "review": "Transactions to check",
+}
+
+
+def _log(pid: int, alert: dict, title: str) -> int | None:
+    """The log entry for this alert (one per alert, however many people get it). Returns its id, or None when
+    an admin has switched notification logging off."""
+    try:
+        with use_profile(pid), Session(current_engine()) as s:
+            ref = f"notify:{alert['key']}"
+            row = s.exec(select(Activity).where(Activity.ref == ref)).first()
+            if row:
+                return row.id
+            row = activity.record(s, "notification", title,
+                                  [alert["body"], f"Why: {WHY.get(alert.get('kind', ''), 'An alert')}."],
+                                  amount=alert.get("amount"), who="Payday", url=alert.get("url", "/"), ref=ref,
+                                  data={"recipients": [], "alert": alert.get("kind", "")}, commit=True)
+            return row.id if row else None
+    except Exception:  # noqa: BLE001 - a log problem must never stop the alert itself
+        log.exception("notifications: couldn't log an alert for household %s", pid)
+        return None
+
+
+def _log_recipient(pid: int, entry_id: int, who: str, devices: int, status: str) -> None:
+    try:
+        with use_profile(pid), Session(current_engine()) as s:
+            row = s.get(Activity, entry_id)
+            if not row:
+                return
+            data = json.loads(row.data or "{}")
+            data.setdefault("recipients", []).append(
+                {"who": who, "devices": devices, "status": status, "at": datetime.now(timezone.utc).isoformat()})
+            row.data = json.dumps(data)
+            s.add(row)
+            s.commit()
+    except Exception:  # noqa: BLE001
+        log.exception("notifications: couldn't log who got alert %s", entry_id)
 
 
 def run_all() -> int:

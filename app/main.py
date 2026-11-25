@@ -21,9 +21,9 @@ import httpx
 import segno
 from markupsafe import Markup, escape
 from sqlalchemy import func, or_
-from sqlmodel import Session, select
+from sqlmodel import Session, delete as sql_delete, select
 
-from . import akahu, data, mailer, mortgage, splits, themes, vault
+from . import activity, akahu, data, mailer, mortgage, splits, themes, vault
 from .bills import APPROX_DAYS, match_pending, nearest_unpaid_due, occurrences, suggest_bill, valid_pattern
 from .categorise import (categorise, rule_matches, find_partner, get_or_create_category, learn, link_transfer,
                          pair_transfers, recategorise_all)
@@ -33,7 +33,7 @@ from .auth import (COOKIE, PRE_COOKIE, PROFILE_COOKIE, SESSION_DAYS, any_users, 
                    make_cookie, make_invite, make_pre_cookie, memberships, new_backup_codes, new_totp_secret, otpauth_uri,
                    password_problem, profile_admins, refresh_cookie, use_backup_code, user_from_cookie,
                    user_from_pre_cookie, verify_password)
-from .db import (Account, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
+from .db import (Account, Activity, Bill, Category, Goal, Invite, Loan, LoanEntry, LoanRate, Membership, NotifySent, PendingTransaction, Profile, PushDevice,
                  PropertyValue, Rule, Setting, Split, Transaction, User, current_engine, current_profile_id, get_setting,
                  init_db, set_setting, set_site_setting, site_engine, site_setting, use_profile)
 from .insights import (Ctx, bars, category_averages, category_limits, usual_spend, change, detect_subscriptions, donut,
@@ -393,7 +393,9 @@ async def auth(request: Request, call_next):
         return _deny("Please sign in again.", 401)
     if path.startswith("/site") and not user.is_owner:
         return _deny("Only the site owner can open that.", 403)
-    wanted = request.cookies.get(PROFILE_COOKIE, "")
+    # A notification names its household (?household=), so tapping one from another household shows it there.
+    asked = request.query_params.get("household", "") if request.method == "GET" else ""
+    wanted = asked if any(str(p.id) == asked for _, p in mems) else request.cookies.get(PROFILE_COOKIE, "")
     chosen = next((m for m in mems if str(m[1].id) == wanted), None) or \
         next((m for m in mems if m[1].id == user.last_profile_id), None) or (mems[0] if mems else None)
     request.state.profiles = [(p.id, p.name, role) for role, p in mems]
@@ -415,6 +417,8 @@ async def auth(request: Request, call_next):
         fresh = refresh_cookie(cookie)
         if fresh and COOKIE not in resp.headers.get("set-cookie", ""):
             _set_session_cookie(resp, request, fresh)
+        if chosen and asked == str(chosen[1].id) and asked != request.cookies.get(PROFILE_COOKIE, ""):
+            resp.set_cookie(PROFILE_COOKIE, asked, max_age=365 * 86400, **_cookie_opts(request))
         return _harden(resp, request)
     finally:
         current_profile.reset(tokens[1])
@@ -1448,6 +1452,15 @@ TXN_PAGE = "/transactions"
 MAX_ROWS = 500
 
 
+def _log_txn(s: Session, txn: Transaction, title: str, lines: list | None = None) -> None:
+    """A change someone made to one transaction, with where its money is allocated now."""
+    names = activity.Names(s)
+    activity.record(s, "change", f"{title}: {activity.money(txn.amount)} {activity.payee(txn)}",
+                    (lines or []) + [f"{txn.date.strftime('%a %-d %b %Y')}, {names.account(txn.account_id)}",
+                                     "Now: " + activity.allocation(txn, names)],
+                    amount=txn.amount, url=activity.txn_url(txn), ref=txn.id)
+
+
 def split_tags(raw: str) -> list[str]:
     return [t.strip().lower() for t in raw.replace(";", ",").split(",") if t.strip()]
 
@@ -1472,9 +1485,12 @@ def save_note(txn_id: str, note: str = Form(""), tags: str = Form(""), next: str
               s: Session = Depends(session)):
     txn = s.get(Transaction, txn_id)
     if txn:
+        old = (txn.note, txn.tags)
         txn.note = note.strip()[:500]
         txn.tags = ", ".join(dict.fromkeys(split_tags(tags)))[:200]
         s.add(txn)
+        if old != (txn.note, txn.tags):
+            _log_txn(s, txn, "Note changed", [f"Note: {txn.note or '(none)'}", f"Tags: {txn.tags or '(none)'}"])
         s.commit()
     return back(_safe_next(next))
 
@@ -1485,6 +1501,7 @@ def set_category(txn_id: str, category_id: int = Form(...), next: str = Form(TXN
     txn, new_cat = s.get(Transaction, txn_id), s.get(Category, category_id)
     if not txn or not new_cat:
         return back(_safe_next(next))
+    was = activity.allocation(txn, activity.Names(s))
     if txn.transfer_id and new_cat.kind != "transfer":
         # you've said this isn't a transfer, so unlink the other half too
         other = s.get(Transaction, txn.transfer_id)
@@ -1496,6 +1513,7 @@ def set_category(txn_id: str, category_id: int = Form(...), next: str = Form(TXN
     txn.category_id, txn.category_source, txn.reviewed = new_cat.id, "manual", True
     splits.clear(s, txn.id)  # one category for the whole transaction again
     s.add(txn)
+    _log_txn(s, txn, "Category changed", [f"Was: {was}"])
     s.commit()
     if new_cat.kind == "transfer" and not txn.transfer_id:
         # you've said it's a transfer, so find and mark the other half too
@@ -1565,14 +1583,19 @@ async def save_split(request: Request, txn_id: str, s: Session = Depends(session
     biggest = max(parts, key=lambda p: abs(p.amount))  # what the transaction shows where one category is needed
     txn.category_id, txn.category_source, txn.reviewed = biggest.category_id, "manual", True
     s.add(txn)
+    names = activity.Names(s)
+    _log_txn(s, txn, "Split", [f"{activity.money(p.amount)} to {names.category(p.category_id)}"
+                               + (f" ({p.note})" if p.note else "") for p in parts])
     s.commit()
     return back(next_)
 
 
 @app.post("/transactions/{txn_id}/unsplit")
 def unsplit(txn_id: str, next: str = Form(TXN_PAGE), s: Session = Depends(session)):
-    if s.get(Transaction, txn_id):
+    txn = s.get(Transaction, txn_id)
+    if txn:
         splits.clear(s, txn_id)
+        _log_txn(s, txn, "Split removed")
         s.commit()
     return back(_safe_next(next))
 
@@ -1593,6 +1616,7 @@ def reset_category(txn_id: str, next: str = Form(TXN_PAGE), s: Session = Depends
         splits.clear(s, txn.id)
         categorise(s, txn)
         s.add(txn)
+        _log_txn(s, txn, "Category handed back to Payday")
         s.commit()
     return back(_safe_next(next))
 
@@ -1610,6 +1634,7 @@ def link_bill(txn_id: str, bill_id: str = Form(""), next: str = Form(TXN_PAGE),
             txn.bill_id = txn.bill_due_date = None
         txn.category_source = "manual"
         s.add(txn)
+        _log_txn(s, txn, "Linked to a bill" if bill else "Unlinked from its bill")
         s.commit()
     return back(_safe_next(next))
 
@@ -1655,6 +1680,10 @@ def review_file(payee: str = Form(...), category_id: int = Form(...), always: bo
         if not always:
             t.category_id, t.category_source = cat.id, "manual"
         s.add(t)
+    activity.record(s, "change", f"{len(txns)} from {payee} filed under {cat.name}",
+                    [f"{t.date.strftime('%-d %b')} {activity.money(t.amount)} {activity.payee(t)}" for t in txns]
+                    + (["And all future ones from this payee."] if always else []),
+                    url="/transactions?search=" + quote(payee[:40]))
     s.commit()
     if always:
         learn(s, txns[0], cat.id)  # adds the rule and re-sorts, so these become "learned from you"
@@ -1668,8 +1697,108 @@ def review_accept(payee: str = Form(""), everything: bool = Form(False), s: Sess
     for t in txns:
         t.reviewed = True
         s.add(t)
+    if txns:
+        names = activity.Names(s)
+        activity.record(s, "change", f"{len(txns)} guessed categor{'ies' if len(txns) != 1 else 'y'} accepted",
+                        [f"{t.date.strftime('%-d %b')} {activity.money(t.amount)} {activity.payee(t)}: "
+                         f"{names.category(t.category_id)}" for t in txns], url="/review")
     s.commit()
     return back("/review?msg=accepted")
+
+
+# ---------- Activity log ----------
+ACTIVITY_PAGE = 100
+
+
+def _local(dt: datetime) -> datetime:
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(TZ)
+
+
+templates.env.filters["local_time"] = lambda dt: _local(dt).strftime("%-I:%M %p").lower()
+templates.env.filters["local_when"] = lambda dt: _local(dt).strftime("%A %-d %B %Y, %-I:%M %p").replace("AM", "am").replace("PM", "pm")
+
+
+@app.get("/activity")
+def activity_page(request: Request, kind: str = "", q: str = "", before: int = 0, s: Session = Depends(session)):
+    query = select(Activity)
+    kind = kind if kind in activity.KIND_NAMES else ""
+    if kind:
+        query = query.where(Activity.kind == kind)
+    q = q.strip()[:80]
+    if q:
+        like = f"%{q}%"
+        query = query.where(or_(Activity.title.ilike(like), Activity.body.ilike(like), Activity.who.ilike(like)))
+    if before:
+        query = query.where(Activity.id < before)
+    rows = s.exec(query.order_by(Activity.id.desc()).limit(ACTIVITY_PAGE + 1)).all()
+    more = len(rows) > ACTIVITY_PAGE
+    rows = rows[:ACTIVITY_PAGE]
+    days: list[tuple[date, list]] = []
+    for r in rows:
+        d = _local(r.at).date()
+        if not days or days[-1][0] != d:
+            days.append((d, []))
+        days[-1][1].append(r)
+    return templates.TemplateResponse(request, "activity.html", {
+        "days": days, "kind": kind, "q": q, "kinds": activity.KINDS, "more": rows[-1].id if more else 0,
+        "today": today(), "off": activity.off_kinds(s), "page": "activity"})
+
+
+@app.get("/activity/{entry_id}")
+def activity_entry(request: Request, entry_id: int, s: Session = Depends(session)):
+    row = s.get(Activity, entry_id)
+    if not row:
+        return back("/activity?msg=gone")
+    try:
+        extra = json.loads(row.data) if row.data else {}
+    except ValueError:
+        extra = {}
+    for r in extra.get("recipients", []):
+        try:
+            r["when"] = datetime.fromisoformat(r["at"])
+        except (KeyError, ValueError):
+            r["when"] = None
+    txn = s.get(Transaction, row.ref) if row.ref and not row.ref.startswith("notify:") else None
+    related = s.exec(select(Activity).where(Activity.ref == row.ref, Activity.id != row.id)
+                     .order_by(Activity.id.desc()).limit(20)).all() if row.ref else []
+    return templates.TemplateResponse(request, "activity_entry.html", {
+        "e": row, "extra": extra, "kind_name": activity.KIND_NAMES.get(row.kind, row.kind),
+        "link_label": activity.label_for(row.url) if row.url else "", "txn": txn, "related": related,
+        "now_alloc": activity.allocation(txn, activity.Names(s)) if txn else "",
+        "cats": s.exec(select(Category).order_by(Category.name)).all() if txn else [],
+        "bills": s.exec(select(Bill).where(Bill.active == True).order_by(Bill.name)).all() if txn else [],  # noqa: E712
+        "page": "activity"})
+
+
+@app.post("/activity/settings")
+async def activity_settings(request: Request, s: Session = Depends(session)):
+    form = await request.form()
+    try:
+        keep = int(str(form.get("keep", activity.DEFAULT_KEEP)))
+    except ValueError:
+        keep = activity.DEFAULT_KEEP
+    before = (sorted(activity.off_kinds(s)), activity.keep_days(s))
+    activity.save_settings(s, [str(k) for k in form.getlist("on")], keep)
+    after_off, after_keep = sorted(activity.off_kinds(s)), activity.keep_days(s)
+    if (after_off, after_keep) != before:
+        activity.record(s, "change", "Activity log settings changed",
+                        [f"Recording: {', '.join(n for k, n in activity.KINDS if k not in after_off) or 'nothing'}",
+                         f"Keeping entries for: {dict(activity.KEEP_CHOICES).get(after_keep, after_keep)}"],
+                        url="/settings?tab=log", commit=True, force=True)
+    activity.prune(s)
+    return _settings("log", msg="saved")
+
+
+@app.post("/activity/clear")
+def activity_clear(confirm: str = Form(""), s: Session = Depends(session)):
+    if confirm.strip().lower() != "clear":
+        return _settings("log", msg="noclear")
+    n = len(s.exec(select(Activity.id)).all())
+    s.exec(sql_delete(Activity))
+    s.commit()
+    activity.record(s, "change", "Activity log cleared", [f"{n} entr{'ies' if n != 1 else 'y'} removed."],
+                    url="/settings?tab=log", commit=True, force=True)
+    return _settings("log", msg="cleared")
 
 
 # ---------- Bills ----------
@@ -1740,10 +1869,21 @@ def add_bill(name: str = Form(...), amount: float = Form(...), frequency: str = 
     values = _bill_values(name, amount, frequency, match_pattern, tolerance_pct, window_days, category_id, s, account_id)
     if not values:
         return back("/bills?bill=bad#add")
-    s.add(Bill(anchor_date=anchor_date, **values))
+    bill = Bill(anchor_date=anchor_date, **values)
+    s.add(bill)
+    s.flush()
+    activity.record(s, "change", f"Bill added: {bill.name}", _bill_lines(s, bill), amount=-bill.amount,
+                    url=f"/bills/{bill.id}")
     s.commit()
-    recategorise_all(s)  # match existing transactions to the new bill
+    recategorise_all(s, f"The bill {bill.name} was added.")  # match existing transactions to the new bill
     return back("/bills")
+
+
+def _bill_lines(s: Session, bill: Bill) -> list[str]:
+    cat = s.get(Category, bill.category_id) if bill.category_id else None
+    return [f"{activity.money(bill.amount)} {bill.frequency}, from {bill.anchor_date.strftime('%-d %b %Y')}",
+            f"Matches statement text: {bill.match_pattern}", f"Category: {cat.name if cat else 'Bills'}",
+            "Active" if bill.active else "Paused"]
 
 
 @app.get("/bills/{bill_id}")
@@ -1786,6 +1926,8 @@ def edit_bill(bill_id: int, name: str = Form(...), amount: float = Form(...),
         setattr(bill, field, value)
     bill.anchor_date, bill.active = anchor_date, active
     s.add(bill)
+    activity.record(s, "change", f"Bill changed: {bill.name}", _bill_lines(s, bill), amount=-bill.amount,
+                    url=f"/bills/{bill.id}")
     # due dates may have moved: re-point the links you made by hand, oldest first
     manual = s.exec(select(Transaction).where(Transaction.bill_id == bill_id,
                                               Transaction.category_source == "manual")
@@ -1798,7 +1940,7 @@ def edit_bill(bill_id: int, name: str = Form(...), amount: float = Form(...),
         s.add(t)
         s.flush()
     s.commit()
-    recategorise_all(s)
+    recategorise_all(s, f"The bill {bill.name} was changed.")
     return back(f"/bills/{bill_id}")
 
 
@@ -1810,8 +1952,10 @@ def delete_bill(bill_id: int, s: Session = Depends(session)):
             t.bill_id = t.bill_due_date = None
             s.add(t)
         s.delete(bill)
+        activity.record(s, "change", f"Bill deleted: {bill.name}", [f"{activity.money(bill.amount)} {bill.frequency}"],
+                        url="/bills")
         s.commit()
-        recategorise_all(s)
+        recategorise_all(s, f"The bill {bill.name} was deleted.")
     return back("/bills")
 
 
@@ -1979,6 +2123,11 @@ def add_goal(name: str = Form(""), target: str = Form(""), target_date: str = Fo
     if not g.account_id:
         g.manual_saved = round(abs(_float(saved) or 0), 2)
     s.add(g)
+    s.flush()
+    activity.record(s, "change", f"Goal added: {g.name}", [f"Target {activity.money(g.target)}"
+                    + (f" by {g.target_date.strftime('%-d %b %Y')}" if g.target_date else "")]
+                    + ([f"Already saved {activity.money(g.manual_saved)}"] if g.manual_saved else []),
+                    url=f"/goals#g-{g.id}")
     s.commit()
     return back(f"/goals#g-{g.id}")
 
@@ -1994,6 +2143,8 @@ def edit_goal(goal_id: int, name: str = Form(""), target: str = Form(""), target
     for k, v in values.items():
         setattr(g, k, v)
     s.add(g)
+    activity.record(s, "change", f"Goal changed: {g.name}", [f"Target {activity.money(g.target)}"
+                    + (f" by {g.target_date.strftime('%-d %b %Y')}" if g.target_date else "")], url=f"/goals#g-{g.id}")
     s.commit()
     return back(f"/goals#g-{g.id}")
 
@@ -2003,11 +2154,16 @@ def goal_add_money(goal_id: int, amount: str = Form(""), action: str = Form("add
     g = s.get(Goal, goal_id)
     v = _float(amount)
     if g and not g.account_id and v:
+        was = g.manual_saved or 0
         if action == "set":
             g.manual_saved = round(max(v, 0), 2)
         else:
             g.manual_saved = round(max((g.manual_saved or 0) + (-abs(v) if action == "take" else abs(v)), 0), 2)
         s.add(g)
+        moved = round(g.manual_saved - was, 2)
+        activity.record(s, "allocation", f"{activity.money(abs(moved))} {'put towards' if moved >= 0 else 'taken from'} {g.name}",
+                        [f"Saved was {activity.money(was)}, now {activity.money(g.manual_saved)} of {activity.money(g.target)}"],
+                        amount=moved, url=f"/goals#g-{g.id}")
         s.commit()
     return back(f"/goals#g-{goal_id}")
 
@@ -2018,6 +2174,7 @@ def goal_done(goal_id: int, s: Session = Depends(session)):
     if g:
         g.done = not g.done
         s.add(g)
+        activity.record(s, "change", f"Goal {'marked done' if g.done else 'reopened'}: {g.name}", url=f"/goals#g-{g.id}")
         s.commit()
     return back(f"/goals#g-{goal_id}")
 
@@ -2027,6 +2184,7 @@ def goal_delete(goal_id: int, s: Session = Depends(session)):
     g = s.get(Goal, goal_id)
     if g:
         s.delete(g)
+        activity.record(s, "change", f"Goal deleted: {g.name}", [f"Target was {activity.money(g.target)}"], url="/goals")
         s.commit()
     return back("/goals")
 
@@ -2391,7 +2549,8 @@ def mortgage_setup(s: Session = Depends(session)):
 # ---------- Settings ----------
 SETTINGS_TABS = [("pay", "Household and pay"), ("bank", "Bank connection"), ("accounts", "Accounts"),
                  ("categories", "Categories"), ("limits", "Category limits"), ("rules", "Rules"),
-                 ("members", "People"), ("data", "Backup and export"), ("notify", "Notifications"), ("you", "You")]
+                 ("members", "People"), ("data", "Backup and export"), ("log", "Activity log"), ("notify", "Notifications"),
+                 ("you", "You")]
 PAYDAY_ADJUST = ("previous_business_day", "next_business_day", "none")
 
 
@@ -2489,6 +2648,9 @@ def settings_page(request: Request, tab: str = "", s: Session = Depends(session)
     elif tab == "categories":
         used = {cid: n for cid, n in s.exec(select(Transaction.category_id, func.count()).group_by(Transaction.category_id))}
         ctx.update(cats=cats, used=used)
+    elif tab == "log":
+        ctx.update(log_kinds=activity.KINDS, log_off=activity.off_kinds(s), log_keep=activity.keep_days(s),
+                   keep_choices=activity.KEEP_CHOICES, log_count=len(s.exec(select(Activity.id)).all()))
     elif tab == "data":
         ctx.update(restore=request.query_params.get("restore", ""), held=None, problem=request.query_params.get("problem", ""))
     return templates.TemplateResponse(request, "settings.html", ctx)
@@ -2719,6 +2881,12 @@ def preview_rule(request: Request, pattern: str = "", direction: str = "any", mi
         "rule_id": rule_id if rule_id.isdigit() else "", "page": "settings"})
 
 
+def _rule_words(s: Session, rule: Rule) -> str:
+    cat = s.get(Category, rule.category_id)
+    what = rule.pattern.removeprefix("re:") or "anything"
+    return f"{what} goes in {cat.name if cat else 'a category'}"
+
+
 @app.post("/rules")
 def add_rule(pattern: str = Form(""), direction: str = Form("any"), min_amount: str = Form(""),
              max_amount: str = Form(""), account_id: str = Form(""), category_id: str = Form(""),
@@ -2732,7 +2900,7 @@ def add_rule(pattern: str = Form(""), direction: str = Form("any"), min_amount: 
                         else int(category_id))
     s.add(rule)
     s.commit()
-    recategorise_all(s)
+    recategorise_all(s, f"Rule added: {_rule_words(s, rule)}.")
     return _settings("rules", msg="saved")
 
 
@@ -2748,7 +2916,7 @@ def edit_rule(rule_id: int, pattern: str = Form(""), direction: str = Form("any"
         setattr(rule, f, getattr(new, f))
     s.add(rule)
     s.commit()
-    recategorise_all(s)
+    recategorise_all(s, f"Rule changed: {_rule_words(s, rule)}.")
     return _settings("rules", msg="saved")
 
 
@@ -2756,9 +2924,10 @@ def edit_rule(rule_id: int, pattern: str = Form(""), direction: str = Form("any"
 def delete_rule(rule_id: int, s: Session = Depends(session)):
     rule = s.get(Rule, rule_id)
     if rule:
+        words = _rule_words(s, rule)
         s.delete(rule)
         s.commit()
-        recategorise_all(s)
+        recategorise_all(s, f"Rule deleted: {words}.")
     return _settings("rules", msg="deleted")
 
 

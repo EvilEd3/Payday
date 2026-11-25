@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Activity · Payday{% endblock %}
+{% block content %}
+{% set kind_chip = {'money': 'paid', 'allocation': 'due', 'notification': 'pend', 'sync': '', 'change': ''} %}
+{% set kind_word = {'money': 'Money', 'allocation': 'Allocation', 'notification': 'Notification', 'sync': 'Sync', 'change': 'Change'} %}
+<div class="pagehead">
+  <div>
+    <h1>Activity</h1>
+    <p class="sub">Everything that happened{% if request.state.profile %} in {{ request.state.profile.name }}{% endif %}: money in and out, where it was allocated, each notification sent, each sync and each change people made.
+      <a class="admin-only" href="/settings?tab=log">Log settings</a></p>
+  </div>
+</div>
+{% if request.query_params.get('msg') == 'gone' %}<p class="flash bad" role="alert">That entry isn’t in the log any more. Old entries are tidied away after a while.</p>{% endif %}
+<nav class="tabs" aria-label="Show">
+  <a href="/activity{{ '?q=' ~ q|urlencode if q }}" {% if not kind %}aria-current="page"{% endif %}>Everything</a>
+  {% for k, label in kinds %}<a href="/activity?kind={{ k }}{{ '&q=' ~ q|urlencode if q }}" {% if kind == k %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+<form method="get" action="/activity" class="searchbar" role="search">
+  {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+  <input type="search" name="q" value="{{ q }}" placeholder="Search the log: payee, bill, amount or person" aria-label="Search the log">
+  <button class="quiet">Search</button>
+</form>
+{% if kind and kind in off %}<p class="flash bad">{{ dict(kinds)[kind] }} aren’t being recorded at the moment. <a class="admin-only" href="/settings?tab=log">Change that</a></p>{% endif %}
+
+{% for d, rows in days %}
+<section class="logday">
+  <h2>{% if d == today %}Today{% elif (today - d).days == 1 %}Yesterday{% else %}{{ d|long }}{% endif %}</h2>
+  <ol class="panel flush loglist">
+    {% for e in rows %}
+    <li><a href="/activity/{{ e.id }}">
+      <span class="logtime">{{ e.at|local_time }}</span>
+      <span class="logmain"><span class="logtitle">{{ e.title }}</span>
+        <span class="logmeta"><span class="chip {{ kind_chip.get(e.kind, '') }}">{{ kind_word.get(e.kind, e.kind) }}</span>{% if e.who %} {{ 'by ' if e.kind == 'change' else '' }}{{ e.who }}{% endif %}</span></span>
+      {% if e.amount is not none %}<span class="num logamt {{ 'pos' if e.amount > 0 }}">{{ e.amount|money(True) }}</span>{% endif %}
+    </a></li>
+    {% endfor %}
+  </ol>
+</section>
+{% else %}
+<div class="panel"><p class="empty">{% if q or kind %}Nothing in the log matches that.{% else %}Nothing logged yet. Entries appear here after the next sync, notification or change.{% endif %}</p></div>
+{% endfor %}
+{% if more %}<p style="margin-top:1rem"><a class="btn quiet" href="/activity?before={{ more }}{{ '&kind=' ~ kind if kind }}{{ '&q=' ~ q|urlencode if q }}">Older entries</a></p>{% endif %}
+{% endblock %}

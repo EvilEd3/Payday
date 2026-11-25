@@ -25,13 +25,24 @@ self.addEventListener("push", (event) => {
     data: { url: data.url || "/" },
   }));
 });
+// Tapping a notification opens its entry in the activity log (or the page it's about).
+// Android only lets a window come to the front while the tap is still fresh, so focus first and navigate after.
+// A window this worker doesn't control can't be navigated, so if that fails it opens the page in a new window.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = new URL(event.notification.data && event.notification.data.url || "/", self.location.origin).href;
-  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
-    for (const w of wins) {
-      if (new URL(w.url).origin === self.location.origin && "navigate" in w) return w.navigate(target).then((c) => c && c.focus());
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const ours = wins.filter((w) => new URL(w.url).origin === self.location.origin);
+    const win = ours.find((w) => w.focused) || ours.find((w) => w.visibilityState === "visible") || ours[0];
+    if (win) {
+      try {
+        const focused = await win.focus();
+        if (new URL(focused.url).href === target) return;
+        const moved = await focused.navigate(target);
+        if (moved) return;
+      } catch (e) { /* fall through to a new window */ }
     }
-    return self.clients.openWindow(target);
-  }));
+    if (self.clients.openWindow) await self.clients.openWindow(target);
+  })());
 });

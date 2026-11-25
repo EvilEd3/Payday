@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import category_options %}
+{% block title %}{{ e.title }} · Activity · Payday{% endblock %}
+{% block content %}
+<p class="small"><a href="/activity">All activity</a> · <a href="/activity?kind={{ e.kind }}">{{ kind_name }}</a></p>
+<div class="pagehead">
+  <div>
+    <h1>{{ e.title }}</h1>
+    <p class="sub">{{ e.at|local_when }}{% if e.who %}, {{ 'by ' if e.kind == 'change' else '' }}{{ e.who }}{% endif %}</p>
+  </div>
+  {% if e.url %}<a class="btn" href="{{ e.url }}">{{ link_label }}</a>{% endif %}
+</div>
+
+<div class="grid2">
+  <section class="panel logentry">
+    <h2 class="small muted" style="margin:0 0 .5rem">{{ 'What the notification said' if e.kind == 'notification' else 'Details' }}</h2>
+    {% if e.amount is not none %}<p class="logbig num {{ 'pos' if e.amount > 0 }}">{{ e.amount|money(True) }}</p>{% endif %}
+    {% set lines = e.body.split('\n') if e.body else [] %}
+    {% if lines %}
+    <ul class="loglines">{% for line in lines %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">No more detail was recorded.</p>{% endif %}
+  </section>
+
+  {% if e.kind == 'notification' %}
+  <section class="panel">
+    <h2 class="small muted" style="margin:0 0 .5rem">Who it went to</h2>
+    {% set rec = extra.get('recipients', []) %}
+    {% if rec %}
+    <ul class="loglines">{% for r in rec %}<li><strong>{{ r.who }}</strong>: {{ r.status }}{% if r.devices %} on {{ r.devices }} device{{ 's' if r.devices != 1 }}{% endif %}{% if r.when %}, {{ r.when|local_when }}{% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">Still being sent.</p>{% endif %}
+  </section>
+  {% elif txn %}
+  <section class="panel">
+    <h2 class="small muted" style="margin:0 0 .5rem">Allocated now</h2>
+    <p style="margin-top:0">{{ now_alloc }}</p>
+    <div class="admin-only">
+      <form method="post" action="/transactions/{{ txn.id }}/category" class="inlineform">
+        <input type="hidden" name="next" value="/activity/{{ e.id }}">
+        <label>Change the category <select name="category_id">{{ category_options(cats, txn.category_id) }}</select></label>
+        <button class="quiet small">Save</button>
+      </form>
+      {% if txn.amount < 0 and bills %}
+      <form method="post" action="/transactions/{{ txn.id }}/bill" class="inlineform">
+        <input type="hidden" name="next" value="/activity/{{ e.id }}">
+        <label>Pays the bill <select name="bill_id"><option value="">None</option>{% for b in bills %}<option value="{{ b.id }}" {% if b.id == txn.bill_id %}selected{% endif %}>{{ b.name }}</option>{% endfor %}</select></label>
+        <button class="quiet small">Save</button>
+      </form>
+      {% endif %}
+      <p class="small muted">Changes here are saved to the transaction and logged too. For a split, a note or tags, use <a href="{{ e.url or '/transactions' }}">Transactions</a>.</p>
+    </div>
+  </section>
+  {% elif e.ref and not txn and e.kind in ('money', 'allocation', 'change') %}
+  <section class="panel"><p class="muted" style="margin:0">This transaction isn’t in Payday any more. The bank may have changed or removed it.</p></section>
+  {% endif %}
+</div>
+
+{% if related %}
+<section class="section">
+  <h2>More about this</h2>
+  <ol class="panel flush loglist">
+    {% for r in related %}
+    <li><a href="/activity/{{ r.id }}"><span class="logmain"><span class="logtitle">{{ r.title }}</span><span class="logmeta">{{ r.at|local_when }}{% if r.who %}, {{ r.who }}{% endif %}</span></span></a></li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+{% endblock %}
