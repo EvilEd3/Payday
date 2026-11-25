@@ -310,23 +310,6 @@ th.sortable[aria-sort] { color: var(--ink); font-weight: 700; }
 .paykey dt i.pb-left { outline: 1px solid color-mix(in srgb, var(--on-hero) 35%, transparent); }
 .paykey dd { margin: .1rem 0 0; font-weight: 700; font-size: 1.0625rem; letter-spacing: -0.01em; }
 
-.runway { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(5.25rem, 1fr); gap: 6px; overflow-x: auto; padding: .75rem 0 .5rem;
-  scroll-snap-type: x proximity; scrollbar-width: thin; }
-@media (max-width: 899px) { .runway { margin: 0 calc(-1 * var(--gutter)); padding-inline: var(--gutter); scroll-padding-inline: var(--gutter); } }
-.day { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: .55rem .55rem .6rem; min-height: 5.5rem;
-  display: flex; flex-direction: column; gap: .3rem; scroll-snap-align: start; }
-.day .wd { font-size: .72rem; color: var(--muted); font-weight: 550; }
-.day .dn { font-weight: 750; font-size: 1.25rem; line-height: 1; letter-spacing: -0.03em; }
-.day.today { border-color: var(--bush); box-shadow: inset 0 0 0 1px var(--bush); }
-.day.today .wd { color: var(--bush); font-weight: 700; }
-.day.weekend { background: transparent; border-style: dashed; }
-.day .bill { font-size: .6875rem; line-height: 1.25; background: var(--flax-soft); color: var(--flax); border-radius: 7px; padding: .25rem .35rem; text-decoration: none;
-  overflow-wrap: anywhere; hyphens: none; display: grid; font-weight: 650; }
-.day .bill span { font-weight: 500; color: var(--ink); opacity: .85; }
-.day .bill .m { white-space: nowrap; }
-.day .bill.overdue { background: var(--rata-soft); color: var(--rata); }
-.day.payday { background: var(--bush-soft); border-color: transparent; color: var(--bush); }
-.day.payday .wd { color: inherit; font-weight: 700; }
 
 .ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem; align-items: start; margin-top: 1.25rem; }
 .ov-grid .wide { grid-column: 1 / -1; }
@@ -964,3 +947,83 @@ input.tiny { width: 4.5rem; }
 .nw-y.bottom { bottom: 0; transform: translateY(50%); }
 .nw-axis { display: flex; justify-content: space-between; margin: .5rem 0 0 4.5rem; font-size: .6875rem; color: var(--muted); }
 .nw-axis span { flex: 0 0 auto; width: 0; display: flex; justify-content: center; white-space: nowrap; }
+
+/* ---------- Calendar: bills by day, a pay period or a month at a time ---------- */
+.tabs.seg { margin: 0; }
+.calsums { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 1rem; }
+.calsums .late dt::before { background: var(--rata); }
+.calsums small { color: var(--muted); }
+.calsums small.neg { color: var(--rata); }
+.calblock { padding: .9rem; }
+.calhead, .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) 5.75rem; gap: 6px; }
+.calhead { font-size: .75rem; color: var(--muted); font-weight: 550; padding: 0 .1rem .45rem; }
+.calhead span { padding-left: .5rem; }
+.calhead .wk { text-align: right; padding-right: .4rem; }
+.cal { list-style: none; margin: 0; padding: 0; }
+.cd { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: .45rem .45rem .5rem; min-height: 6.25rem;
+  display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.cd.wkend { background: color-mix(in srgb, var(--sunk) 55%, var(--surface)); }
+.cd.out { background: transparent; border-style: dashed; border-color: color-mix(in srgb, var(--line) 70%, transparent); }
+.cd.out .dn { color: var(--muted); font-weight: 550; }
+.cd .cdtop { display: flex; align-items: baseline; gap: .35rem; flex-wrap: wrap; }
+.cd .wd { display: none; }
+.cd .dn { font-weight: 750; font-size: 1.05rem; line-height: 1; letter-spacing: -0.02em; }
+.cd .dn small { font-size: .72rem; font-weight: 650; color: var(--muted); letter-spacing: 0; }
+.cd.past:not(.out) .dn { color: var(--muted); }
+.cd .tag { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--bush); }
+.cd.today { border-color: var(--bush); box-shadow: inset 0 0 0 1px var(--bush); }
+.cd.payday { background: var(--bush-soft); border: 1px solid transparent; }
+.cd.payday .dn { color: var(--bush); }
+.cb { display: grid; font-size: .6875rem; line-height: 1.25; border-radius: 7px; padding: .25rem .35rem; text-decoration: none;
+  background: var(--flax-soft); color: var(--flax); overflow-wrap: anywhere; hyphens: none; }
+.cb span { color: var(--ink); opacity: .85; font-weight: 500; }
+.cb b { font-weight: 650; white-space: nowrap; }
+.cb:hover { filter: brightness(.97); }
+.cb.paid { background: var(--bush-soft); color: var(--bush); }
+.cb.paid > span:first-child::before { content: "✓ "; color: var(--bush); opacity: 1; font-weight: 700; }
+.cb.pending { background: var(--bush-soft); color: var(--bush); outline: 1px dashed var(--bush); outline-offset: -1px; }
+.cb.missed { background: var(--rata-soft); color: var(--rata); }
+.cd .cbs { display: flex; flex-direction: column; gap: .3rem; flex: 1; }
+.cd .ct { margin-top: auto; text-align: right; font-size: .72rem; font-weight: 700; color: var(--muted); padding-top: .1rem; }
+.cw { display: grid; align-content: center; justify-items: end; text-align: right; padding: .3rem .4rem; border-radius: 12px; background: var(--sunk); min-width: 0; }
+.cw small { font-size: .66rem; color: var(--muted); line-height: 1.2; }
+.cw b { font-size: .9rem; font-weight: 700; letter-spacing: -0.01em; }
+.cw.zero b { color: var(--muted); font-weight: 500; }
+.callegend { list-style: none; display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin: .8rem 0 0; padding: 0 .2rem; font-size: .78rem; color: var(--muted); }
+.callegend li { display: flex; align-items: center; gap: .4rem; }
+.callegend i { width: .8rem; height: .8rem; border-radius: 4px; background: var(--flax-soft); box-shadow: inset 0 0 0 1px var(--flax); }
+.callegend i.paid { background: var(--bush-soft); box-shadow: inset 0 0 0 1px var(--bush); }
+.callegend i.pending { background: var(--bush-soft); box-shadow: none; outline: 1px dashed var(--bush); outline-offset: -1px; }
+.callegend i.missed { background: var(--rata-soft); box-shadow: inset 0 0 0 1px var(--rata); }
+.calbills { margin-top: 1rem; }
+.calbilltable td:first-child a { font-weight: 600; text-decoration: none; }
+.calbilltable th:first-child, .calbilltable td:first-child { padding-left: 0; }
+.calbilltable th:last-child, .calbilltable td:last-child { padding-right: 0; }
+@media (max-width: 899px) { .calhead, .cal { grid-template-columns: repeat(7, minmax(0, 1fr)); } .calhead .wk, .cw { display: none; } }
+/* Phones: the days with bills as a list, a week at a time */
+@media (max-width: 719px) {
+  .calsums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calblock { padding: .35rem 1rem .9rem; }
+  .calhead { display: none; }
+  .cal { display: block; }
+  .cd { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: .8rem; align-items: start; border: 0; border-top: 1px solid var(--line);
+    border-radius: 0; background: none; min-height: 0; padding: .6rem 0; }
+  .cd.wkend { background: none; }
+  .cd:not(.has):not(.today):not(.payday), .cd.out:not(.payday) { display: none; }
+  .cd .cdtop { display: grid; justify-items: center; gap: .1rem; background: var(--sunk); border-radius: 10px; padding: .4rem 0; }
+  .cd .wd { display: block; font-size: .6875rem; color: var(--muted); }
+  .cd .dn small { display: none; }
+  .cd .tag { font-size: .58rem; }
+  .cd.today { box-shadow: none; border-color: var(--line); }
+  .cd.today .cdtop { box-shadow: inset 0 0 0 2px var(--bush); }
+  .cd.payday { background: none; border: 0; border-top: 1px solid var(--line); }
+  .cd.payday .cdtop { background: var(--bush-soft); }
+  .cd.today:not(.has)::after, .cd.payday:not(.has)::after { content: "No bills"; color: var(--muted); font-size: .85rem; align-self: center; }
+  .cd.payday:not(.has)::after { content: "Payday"; color: var(--bush); font-weight: 650; }
+  .cb { display: flex; justify-content: space-between; gap: .75rem; font-size: .875rem; padding: .45rem .6rem; border-radius: 9px; }
+  .cd .ct { font-size: .78rem; }
+  .calbilltable .opt { display: none; }
+  .cw { display: flex; justify-content: space-between; align-items: baseline; background: none; padding: .35rem 0 .6rem; border-radius: 0; }
+  .cw.zero { display: none; }
+  .cw small { font-size: .75rem; }
+}

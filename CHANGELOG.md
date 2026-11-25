@@ -9,6 +9,12 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 - **Sync details on the Overview**: hover over or tap "Bank data from ..." at the top of the Overview to see when
   Payday last synced, how fresh each account's bank data is, and how many new transactions came in. Tap anywhere
   else to close it.
+- **Bills calendar** (Calendar in the menu, or More on a phone): every bill laid out by day, a pay period or a
+  calendar month at a time. Go back through past periods to see what was paid and what never showed up, or forward
+  to see what's coming. Totals for each day, each week, and the whole period (paid, to come, missed), plus a table of
+  each bill. On a phone it lists just the days with bills.
+- **Overview, simpler**: the strip of days under the pay card is gone. The Bills card now lists the bills still to
+  come, nearest first, with how many days until each, and links to the calendar for the ones already paid.
 
 ## 1.3.0
 
