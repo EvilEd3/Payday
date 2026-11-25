@@ -6,6 +6,8 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+## 1.5.0
+
 - **Overview without gaps**: the cards under the pay card now share out between the two columns so both end level,
   instead of a short column leaving a big empty space beside a tall Accounts card. Phones keep a single column.
 - **Settings, rearranged**: a list of sections down the side (grouped into Household, Spending, Records and You)

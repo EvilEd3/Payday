@@ -14,7 +14,7 @@ published image, `ghcr.io/eviled3/payday`.
    ```yaml
    services:
      payday:
-       image: ghcr.io/eviled3/payday:1.4.0   # the version to run; see Releases
+       image: ghcr.io/eviled3/payday:1.5.0   # the version to run; see Releases
        restart: unless-stopped
        ports:
          - "8000:8000"
@@ -40,7 +40,7 @@ settings to check.
 
 1. Take a snapshot of the Payday dataset (Datasets → the dataset → Create Snapshot). Database changes are applied
    when the new version starts, so the snapshot is your way back.
-2. **Apps → Installed → payday → Edit**, change the version in `image:` (for example `1.3.0` to `1.4.0`), add any new
+2. **Apps → Installed → payday → Edit**, change the version in `image:` (for example `1.4.0` to `1.5.0`), add any new
    settings the release notes mention, and **Save**. TrueNAS pulls the new image and restarts Payday.
 3. Check the version at the bottom of any page in Payday.
 
