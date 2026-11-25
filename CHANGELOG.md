@@ -6,6 +6,15 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Overview without gaps**: the cards under the pay card now share out between the two columns so both end level,
+  instead of a short column leaving a big empty space beside a tall Accounts card. Phones keep a single column.
+- **Settings, rearranged**: a list of sections down the side (grouped into Household, Spending, Records and You)
+  replaces the strip of tabs across the top, which couldn't be scrolled with a mouse. On a phone, Settings opens as a
+  list; tap a section to open it and "Settings" at the top to go back.
+- **Activity moved into Settings**: the activity log is now under Settings, Records, to free up the top menu. Links
+  from notifications open it just as before.
+- Fixed the activity log's list showing unstyled on wider screens.
+
 ## 1.4.0
 
 - **Sync details on the Overview**: hover over or tap "Bank data from ..." at the top of the Overview to see when

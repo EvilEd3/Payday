@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+{% extends "_settings_shell.html" %}
 {% from "_macros.html" import category_options %}
 {% block title %}{{ e.title }} · Activity · Payday{% endblock %}
-{% block content %}
-<p class="small"><a href="/activity">All activity</a> · <a href="/activity?kind={{ e.kind }}">{{ kind_name }}</a></p>
+{% block settings_body %}
+<p class="small crumbs"><a href="/activity">All activity</a> · <a href="/activity?kind={{ e.kind }}">{{ kind_name }}</a></p>
 <div class="pagehead">
   <div>
     <h1>{{ e.title }}</h1>

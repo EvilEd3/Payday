@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{# Settings and the activity log share this layout: a side nav of sections on wider screens;
+   on phones plain /settings is a list of the sections and each section has a way back to it. #}
+{% block content %}
+<div class="setshell{{ ' index' if index }}">
+  <nav class="setnav" aria-label="Settings sections">
+    <p class="setnav-title">Settings</p>
+    {% for group, items in nav %}
+    <div class="setgroup">
+      <h2>{{ group }}</h2>
+      <ul>
+        {% for key, label, href in items %}
+        <li><a href="{{ href }}" {% if key == tab %}aria-current="page"{% endif %}>{{ label }}<svg viewBox="0 0 8 12" aria-hidden="true"><path d="M1.5 1l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </nav>
+  <div class="setbody">
+    <a class="setback" href="/settings"><svg viewBox="0 0 8 12" aria-hidden="true"><path d="M6.5 1l-5 5 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Settings</a>
+    {% block settings_body %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

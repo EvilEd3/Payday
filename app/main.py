@@ -1741,7 +1741,8 @@ def activity_page(request: Request, kind: str = "", q: str = "", before: int = 0
         days[-1][1].append(r)
     return templates.TemplateResponse(request, "activity.html", {
         "days": days, "kind": kind, "q": q, "kinds": activity.KINDS, "more": rows[-1].id if more else 0,
-        "today": today(), "off": activity.off_kinds(s), "page": "activity"})
+        "today": today(), "off": activity.off_kinds(s), "page": "settings", "tab": "activity",
+        "nav": settings_nav(request)})
 
 
 @app.get("/activity/{entry_id}")
@@ -1767,7 +1768,7 @@ def activity_entry(request: Request, entry_id: int, s: Session = Depends(session
         "now_alloc": activity.allocation(txn, activity.Names(s)) if txn else "",
         "cats": s.exec(select(Category).order_by(Category.name)).all() if txn else [],
         "bills": s.exec(select(Bill).where(Bill.active == True).order_by(Bill.name)).all() if txn else [],  # noqa: E712
-        "page": "activity"})
+        "page": "settings", "tab": "activity", "nav": settings_nav(request)})
 
 
 @app.post("/activity/settings")
@@ -2547,10 +2548,25 @@ def mortgage_setup(s: Session = Depends(session)):
 
 
 # ---------- Settings ----------
-SETTINGS_TABS = [("pay", "Household and pay"), ("bank", "Bank connection"), ("accounts", "Accounts"),
-                 ("categories", "Categories"), ("limits", "Category limits"), ("rules", "Rules"),
-                 ("members", "People"), ("data", "Backup and export"), ("log", "Activity log"), ("notify", "Notifications"),
-                 ("you", "You")]
+# The settings side nav: groups of (key, label, admin only). "activity" is the log itself at /activity;
+# every other key is a tab of /settings.
+SETTINGS_GROUPS = [
+    ("Household", [("pay", "Household and pay", True), ("bank", "Bank connection", True),
+                   ("accounts", "Accounts", True), ("members", "People", True)]),
+    ("Spending", [("categories", "Categories", True), ("limits", "Category limits", True), ("rules", "Rules", True)]),
+    ("Records", [("activity", "Activity", False), ("log", "Activity log settings", True),
+                 ("data", "Backup and export", True)]),
+    ("You", [("notify", "Notifications", False), ("you", "Your account", False)]),
+]
+SETTINGS_TABS = [(k, label) for _, items in SETTINGS_GROUPS for k, label, _ in items if k != "activity"]
+
+
+def settings_nav(request: Request) -> list:
+    """The settings groups this person can see, as (group, [(key, label, href)])."""
+    admin = request.state.user.role == "admin"
+    return [(g, [(k, label, "/activity" if k == "activity" else f"/settings?tab={k}")
+                 for k, label, admin_only in items if admin or not admin_only])
+            for g, items in SETTINGS_GROUPS if admin or any(not a for *_, a in items)]
 PAYDAY_ADJUST = ("previous_business_day", "next_business_day", "none")
 
 
@@ -2589,10 +2605,12 @@ templates.env.globals["describe_rule"] = describe_rule
 @app.get("/settings")
 def settings_page(request: Request, tab: str = "", s: Session = Depends(session)):
     me = request.state.user
-    tabs = SETTINGS_TABS if me.role == "admin" else [("notify", "Notifications"), ("you", "You")]
-    if tab not in dict(tabs):
+    tabs = SETTINGS_TABS if me.role == "admin" else [("notify", "Notifications"), ("you", "Your account")]
+    index = tab not in dict(tabs)  # plain /settings: phones show the list of sections, wider screens the first one
+    if index:
         tab = tabs[0][0]
-    ctx: dict = {"tab": tab, "tabs": tabs, "page": "settings", "msg": request.query_params.get("msg", ""),
+    ctx: dict = {"tab": tab, "tabs": tabs, "nav": settings_nav(request), "index": index,
+                 "page": "settings", "msg": request.query_params.get("msg", ""),
                  "test": ""}
     if ctx["msg"] in ("tokens", "tested", "badtokens", "testfail"):
         ctx["test"] = get_setting(s, "akahu_test")

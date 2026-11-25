@@ -1,7 +1,7 @@
-{% extends "base.html" %}
+{% extends "_settings_shell.html" %}
 {% from "_macros.html" import category_options, rule_fields %}
-{% block title %}Settings · Payday{% endblock %}
-{% block content %}
+{% block title %}{{ dict(tabs)[tab] }} · Settings · Payday{% endblock %}
+{% block settings_body %}
 {% set me = request.state.user %}
 {% set notes = {'saved': 'Saved.', 'pushtest': 'Test sent. It should appear on your devices within a few seconds.',
   'devremoved': 'Device removed. It won’t get Payday notifications any more.', 'deleted': 'Removed.', 'pw': 'Password changed. Your other devices have been signed out.',
@@ -27,12 +27,7 @@
   'noconnect': 'Bank connections aren’t open yet.', 'cancelled': 'Connecting was cancelled. Nothing changed.',
   'badstate': 'That connection attempt expired or didn’t match. Start again.'} %}
 
-<div class="pagehead"><h1>Settings</h1></div>
-{% if tabs|length > 1 %}
-<nav class="tabs" aria-label="Settings sections">
-  {% for key, label in tabs %}<a href="/settings?tab={{ key }}" {% if key == tab %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
-</nav>
-{% endif %}
+<div class="pagehead"><h1>{{ dict(tabs)[tab] }}</h1></div>
 {% if msg in notes %}<p class="flash" role="status">{{ notes[msg] }}{% if test %} {{ test }}{% endif %}</p>{% elif msg in problems %}<p class="flash bad" role="alert">{{ problems[msg] }}{% if test %} {{ test }}{% endif %}</p>{% endif %}
 
 {# ------------------------------------------------------------------ pay cycle #}
