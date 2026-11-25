@@ -115,7 +115,8 @@ def export_zip(s: Session) -> bytes:
     buf = io.BytesIO()
     names = {"transaction": "transactions", "pendingtransaction": "pending", "account": "accounts",
              "category": "categories", "rule": "rules", "bill": "bills", "loan": "mortgage", "loanrate": "mortgage-rates",
-             "loanentry": "mortgage-repayments", "propertyvalue": "property-values", "goal": "goals", "setting": "settings"}
+             "loanentry": "mortgage-repayments", "propertyvalue": "property-values", "goal": "goals", "setting": "settings",
+             "balancereading": "balance-history"}
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for t in PROFILE_TABLES:
             rows = _rows(s, t)

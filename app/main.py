@@ -23,7 +23,7 @@ from markupsafe import Markup, escape
 from sqlalchemy import func, or_
 from sqlmodel import Session, delete as sql_delete, select
 
-from . import activity, akahu, data, mailer, mortgage, splits, themes, vault
+from . import activity, akahu, data, history, mailer, mortgage, splits, themes, vault
 from .bills import APPROX_DAYS, match_pending, nearest_unpaid_due, occurrences, suggest_bill, valid_pattern
 from .categorise import (categorise, rule_matches, find_partner, get_or_create_category, learn, link_transfer,
                          pair_transfers, recategorise_all)
@@ -2702,7 +2702,8 @@ def save_settings(payday_day: int = Form(15), payday_adjust: str = Form(...), pa
 
 
 @app.get("/accounts/{acc_id}")
-def account_page(request: Request, acc_id: str, offset: int = 0, all: int = 0, s: Session = Depends(session)):
+def account_page(request: Request, acc_id: str, offset: int = 0, all: int = 0, chart: str = "1y",
+                 s: Session = Depends(session)):
     """One account's transactions with a running balance, laid out like a banking app, for reconciling.
 
     Pending transactions sit on their own dates (after that day's settled ones) and are included in the
@@ -2742,8 +2743,12 @@ def account_page(request: Request, acc_id: str, offset: int = 0, all: int = 0, s
     rows = entries if all else [e for e in entries if start <= e["date"] < end]
     rows = list(reversed(rows))[:MAX_ROWS * 2]
     cats = {c.id: c for c in s.exec(select(Category))}
+    chart = chart if chart in history.RANGES else "1y"
+    pts = history.points(s, acc, TZ)
     return templates.TemplateResponse(request, "account.html", {
         "acc": acc, "rows": rows, "cats": cats, "own": own,
+        "graph": history.chart(pts, datetime.now(TZ), chart), "readings": list(reversed(pts))[:12],
+        "reading_count": len(pts), "chart_range": chart, "ranges": history.RANGES,
         "pending_count": len(pending), "pending_total": sum(p.amount for p in pending),
         "with_pending": with_pending, "settled_total": settled_total,
         "gap": acc.balance_current - settled_total if own else 0.0,

@@ -21,6 +21,49 @@
     <span>{% if gap|abs < 0.005 %}Your opening balance plus transactions equals the bank’s balance{% else %}Bank’s balance less your opening balance plus transactions. Something is missing or different{% endif %}</span></div>{% endif %}
 </div>
 
+
+{% set q = ('offset=' ~ offset ~ '&' if offset else '') ~ ('all=1&' if all else '') %}
+<section class="section acchist" id="balance-history" style="margin-top:1.25rem">
+  <div class="listhead" style="margin-top:0">
+    <h2>Balance over time{% if graph %} <small>{{ graph.change|money(True) if graph.change|abs >= 0.005 else 'no change' }} since {{ graph.start|dmy }}</small>{% endif %}</h2>
+    {% if graph %}<nav class="pills" aria-label="How far back">
+      {% for key, r in ranges.items() %}<a href="/accounts/{{ acc.id }}?{{ q }}chart={{ key }}#balance-history" {% if chart_range == key %}aria-current="page"{% endif %}>{{ r[0] }}</a>{% endfor %}
+    </nav>{% endif %}
+  </div>
+  <div class="panel">
+  {% if graph %}
+    <div class="nwchart" style="--h: {{ graph.height }}px" role="img" aria-label="{{ acc.name }} balance from {{ graph.start_balance|round|int }} dollars on {{ graph.start|dmy }} to {{ graph.end_balance|round|int }} dollars now">
+      <span class="nw-y" style="top: {{ graph.y_high }}%"><span class="m">{{ graph.high|dollars }}</span></span>
+      {% if graph.high - graph.low >= 0.5 %}<span class="nw-y" style="top: {{ graph.y_low }}%"><span class="m">{{ graph.low|dollars }}</span></span>{% endif %}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {% if graph.zero is not none %}<line x1="0" x2="100" y1="{{ graph.zero }}" y2="{{ graph.zero }}" class="nw-zero"/>{% endif %}
+        <polygon points="0,100 {{ graph.line }} 100,100" class="nw-area"/>
+        <polyline points="{{ graph.line }}" class="nw-line"/>
+      </svg>
+      {% set many = graph.dots|length > 40 %}{% for d in graph.dots[-400:] %}<span class="nw-dot tipdot{{ ' faint' if many and not loop.last }}{{ ' tip-r' if d.x > 70 else (' tip-l' if d.x < 25) }}" {% if not many or loop.last %}tabindex="0"{% endif %} style="left: {{ d.x }}%; top: {{ d.y }}%"
+        data-tip="{{ d.p.at|dmy }}{% if not d.p.daily %}, {{ d.p.at.strftime('%-I:%M %p')|lower }}{% endif %}: {{ d.p.balance|money|striptags }}{% if d.p.change is not none %} ({{ d.p.change|money(True)|striptags }}){% endif %}"></span>{% endfor %}
+    </div>
+    <div class="hist-axis">{% for tk in graph.ticks %}<span style="left: {{ tk.x }}%">{{ 'Now' if tk.last else (tk.at.strftime('%-I:%M %p')|lower if graph.short else tk.at|short) }}</span>{% endfor %}</div>
+  {% else %}
+    <p class="muted" style="margin:0">No balances saved yet. Payday saves this account’s balance at every sync from now on, so the graph fills in after the next one.</p>
+  {% endif %}
+  </div>
+  {% if readings %}
+  <details class="hist-changes">
+    <summary>{{ 'Latest change' if reading_count == 1 else 'Latest ' ~ readings|length ~ ' of ' ~ reading_count ~ ' changes' }}</summary>
+    <div class="panel flush"><table class="nosearch nosort">
+      <thead><tr><th>When</th><th class="num">Balance</th><th class="num">Change</th></tr></thead>
+      <tbody>{% for p in readings %}
+        <tr><td>{{ p.at|dmy }}{% if p.daily %} <span class="muted small">daily balance</span>{% else %}, {{ p.at.strftime('%-I:%M %p')|lower }}{% endif %}</td>
+          <td class="num {{ 'neg' if p.balance < 0 }}">{{ p.balance|money }}</td>
+          <td class="num {{ 'pos' if (p.change or 0) > 0 else ('neg' if (p.change or 0) < 0) }}">{{ p.change|money(True) if p.change is not none else 'First' }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </details>
+  {% endif %}
+  <p class="muted small" style="margin-top:.5rem">The bank’s balance, saved at each sync when it changed. It catches changes that never show as transactions, like a shares or KiwiSaver account’s value moving.</p>
+</section>
+
 <p class="lede small" style="margin-top:1rem">
   {% if own %}The Balance column starts from your opening balance of {{ acc.opening_balance|money }} at the start of {{ acc.opening_date|long }} {{ acc.opening_date.year }}
     (<a class="admin-only" href="/settings?tab=accounts">change it in Settings</a>) and adds each transaction in turn.

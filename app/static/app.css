@@ -1022,6 +1022,23 @@ input.tiny { width: 4.5rem; }
 .nw-axis { display: flex; justify-content: space-between; margin: .5rem 0 0 4.5rem; font-size: .6875rem; color: var(--muted); }
 .nw-axis span { flex: 0 0 auto; width: 0; display: flex; justify-content: center; white-space: nowrap; }
 
+/* ---- An account's balance over time ---- */
+.acchist .nw-y { transform: translateY(-50%); }
+.hist-axis { position: relative; height: 1rem; margin: .5rem 0 0 4.5rem; font-size: .6875rem; color: var(--muted); }
+.hist-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.hist-axis span:first-child { transform: none; }
+.hist-axis span:last-child { transform: translateX(-100%); }
+.tipdot { cursor: default; outline: none; }
+.tipdot.faint { opacity: 0; }
+.tipdot:hover, .tipdot:focus-visible { opacity: 1; background: var(--surface); border-color: var(--bush); z-index: 2; }
+.tipdot:hover::after, .tipdot:focus-visible::after { content: attr(data-tip); position: absolute; bottom: calc(100% + .45rem); left: 50%;
+  transform: translateX(-50%); white-space: nowrap; padding: .3rem .55rem; border-radius: .4rem; font-size: .75rem;
+  background: var(--ink); color: var(--surface); pointer-events: none; }
+.tipdot.tip-r::after { left: auto; right: -.4rem; transform: none; }
+.tipdot.tip-l::after { left: -.4rem; transform: none; }
+.hist-changes { margin-top: .75rem; }
+.hist-changes summary { cursor: pointer; font-size: .875rem; color: var(--muted); margin-bottom: .5rem; }
+
 /* ---------- Calendar: bills by day, a pay period or a month at a time ---------- */
 .tabs.seg { margin: 0; }
 .calsums { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 1rem; }
