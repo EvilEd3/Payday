@@ -86,5 +86,6 @@ def test_overview_still_counts_the_same_bills(session):
 
 def test_page_renders(client):
     from app import main
+    client.cookies.clear()  # other tests share this client and may have signed it in
     assert client.get("/calendar", follow_redirects=False).status_code in (303, 307)  # signed out
     assert main.app.url_path_for("calendar_page") == "/calendar"
