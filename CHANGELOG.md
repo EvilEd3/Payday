@@ -6,6 +6,8 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+## 1.4.0
+
 - **Sync details on the Overview**: hover over or tap "Bank data from ..." at the top of the Overview to see when
   Payday last synced, how fresh each account's bank data is, and how many new transactions came in. Tap anywhere
   else to close it.
