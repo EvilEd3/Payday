@@ -332,6 +332,8 @@ def sync(trigger: str = "scheduled") -> str:
             progress.detail(f"{len(raw_accounts)} account{'s' if len(raw_accounts) != 1 else ''} and balances updated")
             from .networth import snapshot  # local import: networth imports forecast, which imports more
             snapshot(s, datetime.now(TZ).date())
+            from .history import record
+            record(s)  # each account's balance at this sync, when it changed, for the graph on its page
 
             latest = s.exec(select(Transaction).order_by(Transaction.date.desc())).first()
             since = (datetime.combine(latest.date, datetime.min.time()) - timedelta(days=OVERLAP_DAYS)

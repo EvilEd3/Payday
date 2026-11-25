@@ -251,6 +251,15 @@ class BalanceSnapshot(SQLModel, table=True):
     balance: float
 
 
+class BalanceReading(SQLModel, table=True):
+    """An account's balance at one sync, saved whenever it differs from the last one, for the account's graph."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    account_id: str = Field(index=True)
+    at: datetime = Field(index=True)  # when the sync saw it (UTC)
+    balance: float  # the bank's balance (current)
+    available: Optional[float] = None
+
+
 class User(SQLModel, table=True):
     """A person who can sign in (site database). What they can do depends on the profile: see Membership."""
     id: Optional[int] = Field(default=None, primary_key=True)

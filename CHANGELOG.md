@@ -6,6 +6,11 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **Balance over time on each account**: every sync now saves each account's balance when it has changed, and the
+  account's page (tap its name on the Overview) graphs it over 3 months, a year or everything, with a list of the
+  latest changes. It catches value moving in shares and KiwiSaver accounts that never shows as a transaction. History
+  before this release fills in from the once-a-day balances saved for Net worth. Hover or tap a point to see it.
+
 ## 1.5.0
 
 - **Overview without gaps**: the cards under the pay card now share out between the two columns so both end level,
