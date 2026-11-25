@@ -357,6 +357,28 @@
 </section>
 
 {# ------------------------------------------------------------------ notifications #}
+{% elif tab == 'log' %}
+{% if msg == 'cleared' %}<p class="flash" role="status">The log was cleared.</p>{% elif msg == 'noclear' %}<p class="flash bad" role="alert">Type clear in the box to clear the log.</p>{% endif %}
+<p class="lede">The <a href="/activity">activity log</a> keeps a full record of this household: money in and out, where it was allocated, each notification sent and who got it, each sync and the changes people make. Tapping a notification opens its entry. Everyone in the household can read it; only admins can change these settings. {{ log_count }} entr{{ 'ies' if log_count != 1 else 'y' }} at the moment.</p>
+<form method="post" action="/activity/settings" class="section narrow">
+  <section class="panel">
+    <h2 style="margin-top:0">What to record</h2>
+    <div class="logkinds">
+      {% for k, label in log_kinds %}<label class="check"><input type="checkbox" name="on" value="{{ k }}" {% if k not in log_off %}checked{% endif %}> <span>{{ label }}</span></label>{% endfor %}
+    </div>
+    <p class="small muted">With notifications switched off here, a tapped notification opens the page it’s about instead of its log entry.</p>
+    <label>Keep entries for <select name="keep">{% for days, label in keep_choices %}<option value="{{ days }}" {% if days == log_keep %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <div class="actions" style="margin-top:1rem"><button>Save</button></div>
+  </section>
+</form>
+<form method="post" action="/activity/clear" class="section narrow">
+  <section class="panel">
+    <h2 style="margin-top:0">Clear the log</h2>
+    <p class="small muted">Removes every entry. Your transactions, bills and settings aren’t touched. This can’t be undone.</p>
+    <label>Type clear to confirm <input name="confirm" autocomplete="off" placeholder="clear"></label>
+    <div class="actions" style="margin-top:1rem"><button class="danger">Clear the log</button></div>
+  </section>
+</form>
 {% elif tab == 'notify' %}
 {% set p = prefs %}
 {% macro sw(key, label, hint='') %}<label class="check notifysw"><input type="checkbox" name="{{ key }}" value="true" {% if p[key] %}checked{% endif %}> <span>{{ label }}{% if hint %}<small>{{ hint }}</small>{% endif %}</span></label>{% endmacro %}

@@ -11,7 +11,7 @@ and divides what's left by the days until you're paid again.
 - **Pay-cycle budget**: income, every bill due before payday, goals you're budgeting for, and spending so far, as a
   daily amount. Monthly, fortnightly, weekly or calendar-month pay.
 - **Bills** that match their payments automatically, including pending ones; suggested from your transactions;
-  weekend due dates move to Monday.
+  weekend due dates move to Monday. A calendar of every bill, paid and to come, by pay period or month.
 - **Goals**: a target and a date, tracked from a linked savings account or amounts you add. Shows what's needed each
   pay, week and day, whether you're on track, and when you'll get there. Tick "Budget for this" to set the money aside
   from each pay like a bill.

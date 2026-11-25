@@ -6,9 +6,26 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+## 1.4.0
+
 - **Sync details on the Overview**: hover over or tap "Bank data from ..." at the top of the Overview to see when
   Payday last synced, how fresh each account's bank data is, and how many new transactions came in. Tap anywhere
   else to close it.
+- **Bills calendar** (Calendar in the menu, or More on a phone): every bill laid out by day, a pay period or a
+  calendar month at a time. Go back through past periods to see what was paid and what never showed up, or forward
+  to see what's coming. Totals for each day, each week, and the whole period (paid, to come, missed), plus a table of
+  each bill. On a phone it lists just the days with bills.
+- **Overview, simpler**: the strip of days under the pay card is gone. The Bills card now lists the bills still to
+  come, nearest first, with how many days until each, and links to the calendar for the ones already paid.
+- **Activity log**: a new Activity page (in the menu, and More on a phone) keeps a full record of your household:
+  every transaction the bank sends and where it was allocated (a category, a bill, a transfer), each transfer Payday
+  matched, transactions re-sorted after a rule or bill changed, each sync step by step, every notification sent and
+  who got it, and the changes people make by hand. Filter by kind or search it. Admins choose what's recorded and how
+  long it's kept, or clear it, in Settings, Activity log, and can change a transaction's category or bill straight
+  from its entry.
+- **Notifications open the right page**: tapping a notification opens its entry in the log, with the full message
+  and a button to the bill, account or transactions it's about, in the right household. On Android, tapping one
+  while Payday is in the background now brings it to the front instead of leaving you on the home screen.
 
 ## 1.3.0
 

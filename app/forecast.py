@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
 
 from sqlmodel import Session, select
 
@@ -113,6 +113,37 @@ def counts(t, accounts: dict) -> bool:
     return acc is None or acc.count_spending
 
 
+def history_start(session: Session, today: date) -> date:
+    """The first day Payday has transactions for (today if none yet)."""
+    first = session.exec(select(Transaction).order_by(Transaction.date)).first()
+    return first.date if first else today
+
+
+def bill_schedule(session: Session, start: date, end: date, today: date, paused: bool = False) -> list[dict]:
+    """Every bill due in [start, end), in date order, as {"bill", "due", "txn", "pending", "status", "amount"}.
+
+    status is "paid", "pending" (the bank hasn't settled the payment yet), "due" (today or later, nothing seen
+    yet) or "missed" (past its date with no payment seen). amount is what was paid, else the bill's usual amount.
+    paused=True also lists paused bills' payments in the range, so history still shows what went out."""
+    q = select(Bill) if paused else select(Bill).where(Bill.active == True)  # noqa: E712
+    bills = session.exec(q.order_by(Bill.id)).all()
+    links = {(t.bill_id, t.bill_due_date): t for t in
+             session.exec(select(Transaction).where(Transaction.bill_id != None))}  # noqa: E711
+    pend = match_pending(session)  # bill payments the bank hasn't settled yet
+    out = []
+    for b in bills:
+        for d in occurrences(b, start, end):
+            t, p = links.get((b.id, d)), pend.get((b.id, d))
+            if not b.active and not t:
+                continue  # a paused bill shows only what was actually paid
+            txn = t or p
+            status = "paid" if t else "pending" if p else ("missed" if d < today else "due")
+            out.append({"bill": b, "due": d, "txn": txn, "pending": bool(p and not t), "status": status,
+                        "amount": -txn.amount if txn else b.amount})
+    out.sort(key=lambda e: (e["due"], e["bill"].name.lower()))
+    return out
+
+
 def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
     offset = min(offset, 0)
     is_past = offset < 0
@@ -135,22 +166,13 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
     txns = expand(session, txns)  # a split transaction counts each part in its own category
     income = sum(t.amount for t in txns if t.amount > 0 and kind(t) == "income")
 
-    first = session.exec(select(Transaction).order_by(Transaction.date)).first()
-    data_start = first.date if first else today  # don't flag bills from before your history begins
-    paid_links = {(t.bill_id, t.bill_due_date): t for t in
-                  session.exec(select(Transaction).where(Transaction.bill_id != None))}  # noqa: E711
+    data_start = history_start(session, today)  # don't flag bills from before your history begins
     upcoming, paid = [], []
-    pending_bills = match_pending(session)  # bill payments the bank hasn't settled yet
-    for b in session.exec(select(Bill).where(Bill.active == True)):  # noqa: E712
-        for d in occurrences(b, max(start, data_start), payday):
-            t = paid_links.get((b.id, d))
-            p = pending_bills.get((b.id, d))
-            if t:
-                paid.append({"bill": b, "due": d, "txn": t, "pending": False})
-            elif p:
-                paid.append({"bill": b, "due": d, "txn": p, "pending": True})
-            else:
-                upcoming.append({"bill": b, "due": d, "overdue": is_past or d < today})
+    for e in bill_schedule(session, max(start, data_start), payday, today):
+        if e["txn"]:
+            paid.append({"bill": e["bill"], "due": e["due"], "txn": e["txn"], "pending": e["pending"]})
+        else:
+            upcoming.append({"bill": e["bill"], "due": e["due"], "overdue": is_past or e["due"] < today})
     upcoming.sort(key=lambda x: x["due"])
     paid.sort(key=lambda x: x["due"])
     to_come = sum(u["bill"].amount for u in upcoming)
@@ -173,12 +195,6 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
     days_gone = period_days - days_left
     free = balance - to_come - buffer
 
-    runway = []
-    for i in range(days_left):
-        d = today + timedelta(days=i)
-        runway.append({"date": d, "bills": [u for u in upcoming
-                                             if u["due"] == d or (i == 0 and u["overdue"])]})
-
     by_cat = defaultdict(float)
     for t in txns:
         if kind(t) == "expense":
@@ -193,7 +209,7 @@ def build_dashboard(session: Session, today: date, offset: int = 0) -> dict:
         balance=balance, balances=balances, buffer=buffer, income=income,
         to_come=to_come, bills_paid=bills_paid, bills_pending=bills_pending, free=free,
         per_day=free / days_left if days_left else 0,
-        upcoming=upcoming, paid=paid, runway=runway, all_accounts=all_accounts,
+        upcoming=upcoming, paid=paid, all_accounts=all_accounts,
         bills_total=bills_total, goals=goals, goals_total=goals_total, budget=budget, day_to_day=day_to_day, budget_left=budget_left,
         planned_per_day=planned_per_day,
         budget_per_day=budget_left / days_left if days_left else 0,

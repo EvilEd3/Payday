@@ -1,5 +1,5 @@
 {% set me = request.state.user %}
-{% set more_pages = ['payees', 'goals', 'settings', 'loans', 'networth', 'site'] %}
+{% set more_pages = ['calendar', 'payees', 'goals', 'settings', 'loans', 'networth', 'site', 'activity'] %}
 {% set prof = request.state.profile %}{% set profs = request.state.profiles %}
 <!doctype html>
 {% set bc = browser_colour(me.theme if me else 'bush', me.mode if me else 'auto') %}
@@ -52,8 +52,10 @@
     <a href="/transactions" {% if page=='transactions' %}aria-current="page"{% endif %}>Transactions{% if rc %}<span class="badge" title="{{ rc }} to review">{{ rc }}</span>{% endif %}</a>
     <a href="/payees" {% if page=='payees' %}aria-current="page"{% endif %}>Payees</a>
     <a href="/bills" {% if page=='bills' %}aria-current="page"{% endif %}>Bills</a>
+    <a href="/calendar" {% if page=='calendar' %}aria-current="page"{% endif %}>Calendar</a>
     <a href="/goals" {% if page=='goals' %}aria-current="page"{% endif %}>Goals</a>
     {% if has_loan() %}<a href="/loans" {% if page=='loans' %}aria-current="page"{% endif %}>Loans</a>{% endif %}
+    <a href="/activity" {% if page=='activity' %}aria-current="page"{% endif %}>Activity</a>
     <a href="/settings" {% if page=='settings' %}aria-current="page"{% endif %}>Settings</a>
   </nav>
   {% endif %}
@@ -89,10 +91,12 @@
   <details class="sheetwrap {{ 'current' if page in more_pages }}">
     <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01"/><path d="M12 12h.01"/><path d="M19 12h.01"/></svg>More</summary>
     <div class="sheet">
+      <a href="/calendar" {% if page=='calendar' %}aria-current="page"{% endif %}>Calendar</a>
       <a href="/payees" {% if page=='payees' %}aria-current="page"{% endif %}>Payees</a>
       <a href="/goals" {% if page=='goals' %}aria-current="page"{% endif %}>Goals</a>
       <a href="/networth" {% if page=='networth' %}aria-current="page"{% endif %}>Net worth</a>
       {% if has_loan() %}<a href="/loans" {% if page=='loans' %}aria-current="page"{% endif %}>Loans</a>{% endif %}
+      <a href="/activity" {% if page=='activity' %}aria-current="page"{% endif %}>Activity</a>
       <a href="/settings" {% if page=='settings' %}aria-current="page"{% endif %}>Settings</a>
       {% if me.is_owner %}<a href="/site" {% if page=='site' %}aria-current="page"{% endif %}>Households and sign-ins</a>{% endif %}
       <div class="me">Signed in as {{ me.username }}{% if prof %}, {{ 'admin' if me.role == 'admin' else 'read only' }} in {{ prof.name }}{% endif %}</div>
