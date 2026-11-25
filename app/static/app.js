@@ -408,8 +408,63 @@
 
   /* ---- keep the current settings section in view when the section strip scrolls sideways ---- */
   function tabs() {
-    const strip = document.querySelector(".tabs"), current = strip && strip.querySelector("[aria-current]");
-    if (current) strip.scrollLeft = current.offsetLeft - (strip.clientWidth - current.offsetWidth) / 2;
+    $$(".tabs").forEach((strip) => {
+      const current = strip.querySelector("[aria-current]");
+      if (current) strip.scrollLeft = current.offsetLeft - (strip.clientWidth - current.offsetWidth) / 2;
+      // a mouse wheel scrolls a strip that overflows sideways, as touch and trackpads already can
+      strip.addEventListener("wheel", (e) => {
+        if (strip.scrollWidth <= strip.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        e.preventDefault();
+        strip.scrollLeft += e.deltaY;
+      }, { passive: false });
+    });
+  }
+
+  /* ---- Overview cards: share them between two columns so both end at about the same height ---- */
+  function masonry() {
+    const grid = document.querySelector("[data-masonry]");
+    if (!grid) return;
+    const cards = [...grid.querySelectorAll(":scope > .block")];
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    let last = "";
+    const lay = () => {
+      const two = grid.clientWidth >= 45 * rem && cards.length > 1;
+      let key = "1", pick = 0;
+      if (two) {
+        // try every way of sharing the cards out, keeping their order within each column, and take the most level one
+        grid.classList.add("measuring");  // the last card in each column is stretched; measure every card at its own height
+        const h = cards.map((c) => c.getBoundingClientRect().height + rem);
+        grid.classList.remove("measuring");
+        let best = Infinity;
+        for (let m = 1; m < 1 << cards.length; m += 2) {  // odd masks: the first card always starts the left column
+          let a = 0, b = 0;
+          h.forEach((x, i) => { if (m & (1 << i)) a += x; else b += x; });
+          const diff = Math.abs(a - b) + (b === 0 ? 1e6 : 0);
+          if (diff < best - 0.5) { best = diff; pick = m; }
+        }
+        key = "2:" + pick;
+      }
+      if (key === last) return;
+      last = key;
+      const old = [...grid.querySelectorAll(":scope > .ov-col")];
+      if (!two) {
+        cards.forEach((c) => grid.append(c));
+        old.forEach((c) => c.replaceWith());
+        grid.classList.toggle("masonry", false);
+        return;
+      }
+      const colA = document.createElement("div"), colB = document.createElement("div");
+      colA.className = colB.className = "ov-col";
+      cards.forEach((c, i) => ((pick & (1 << i)) ? colA : colB).append(c));
+      old.forEach((c) => c.replaceWith());
+      grid.append(colA, colB);
+      grid.classList.toggle("masonry", true);
+    };
+    lay();
+    let t;
+    const later = () => { clearTimeout(t); t = setTimeout(lay, 80); };
+    window.addEventListener("resize", later);
+    if ("ResizeObserver" in window) { const ro = new ResizeObserver(later); cards.forEach((c) => ro.observe(c)); }
   }
 
   /* ---- copy buttons (invite links, backup codes) ---- */
@@ -468,7 +523,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    whatsNew(); freshTip(); splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
+    whatsNew(); freshTip(); splitForm(); sync(); folds(); popups(); forms(); filters(); tables(); tabs(); masonry(); copying(); cycleForm(); liveSearch(); columns(); pushSetup();
     tidyAddress();
     restoreScroll();
   });

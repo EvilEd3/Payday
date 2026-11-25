@@ -124,8 +124,8 @@
 </section>
 {% endif %}
 
-<div class="ov-grid">
-  <div class="ov-col">
+{# The cards flow into two columns on wide screens; app.js shares them out so the columns end level. #}
+<div class="ov-grid" data-masonry>
   {# ---------- bills ---------- #}
   <section class="block" id="bills">
     {% set cal = '/calendar' ~ ('?offset=' ~ d.offset if d.is_past else '') %}
@@ -158,8 +158,6 @@
     {% endif %}
   </section>
 
-  </div>
-  <div class="ov-col">
   {# ---------- this pay, worked out ---------- #}
   <section class="block" id="budget">
     <header><h2>{{ 'This month' if d.calendar else 'This pay' }}, worked out</h2></header>
@@ -221,10 +219,10 @@
     {% if d.all_accounts %}<p class="foot split small"><span class="muted">Counted towards your budget</span> <strong class="m-right">{{ d.balance|money }}</strong></p>{% endif %}
   </section>
   {% endif %}
-  </div>
+</div>
   {# ---------- categories ---------- #}
   {% if d.categories %}
-  <section class="block wide" id="categories">
+  <section class="block ov-wide" id="categories">
     <header><h2>Where it’s gone</h2><span class="muted small">{{ d.cat_total|money }} across {{ d.categories|length }} categor{{ 'ies' if d.categories|length != 1 else 'y' }}</span></header>
     <ul class="catrows">
       {% for cid, name, amt in d.categories %}
@@ -240,8 +238,6 @@
     </ul>
   </section>
   {% endif %}
-
-</div>
 
 <div class="statusline">
   {% set bd = d.all_accounts|bank_data %}

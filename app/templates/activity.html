@@ -1,6 +1,6 @@
-{% extends "base.html" %}
+{% extends "_settings_shell.html" %}
 {% block title %}Activity · Payday{% endblock %}
-{% block content %}
+{% block settings_body %}
 {% set kind_chip = {'money': 'paid', 'allocation': 'due', 'notification': 'pend', 'sync': '', 'change': ''} %}
 {% set kind_word = {'money': 'Money', 'allocation': 'Allocation', 'notification': 'Notification', 'sync': 'Sync', 'change': 'Change'} %}
 <div class="pagehead">
