@@ -6,6 +6,10 @@ Note changes under **Unreleased** as they're made. When releasing, rename that h
 
 ## Unreleased
 
+- **A sidebar menu**: the crowded strip of links across the top is now a menu down the left, grouped into Spending,
+  Planning and Wealth, with Settings at the bottom. **Net worth** has its own link. On smaller screens the sidebar
+  narrows to icons. On a phone, Net worth takes a tab and More opens the rest grouped the same way.
+
 ## 1.5.0
 
 - **Overview without gaps**: the cards under the pay card now share out between the two columns so both end level,
